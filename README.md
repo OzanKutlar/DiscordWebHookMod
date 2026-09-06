@@ -30,7 +30,7 @@ All commands require operator permission level 4.
 | `/discordbridge url <url>` | Set the webhook URL |
 | `/discordbridge name <name>` | Set the display name messages post under |
 | `/discordbridge avatar <url>` | Set the avatar image (empty to clear) |
-| `/discordbridge events join\|leave\|chat\|death <true\|false>` | Toggle an individual relay |
+| `/discordbridge events join\|leave\|chat\|death\|commands\|advancements <true\|false>` | Toggle an individual relay |
 | `/discordbridge safety <option> <true\|false>` | Toggle a hardening option (see below) |
 | `/discordbridge inbound status` | Show the Discord to Minecraft relay settings |
 | `/discordbridge inbound enabled <true\|false>` | Turn the inbound relay on or off |

@@ -56,6 +56,14 @@ public final class DiscordConfig
             .comment("Relay player death messages.")
             .define("announceDeath", true);
 
+    private static final ForgeConfigSpec.BooleanValue ANNOUNCE_COMMANDS = BUILDER
+            .comment("Relay commands executed by players and the server console.")
+            .define("announceCommands", true);
+
+    private static final ForgeConfigSpec.BooleanValue ANNOUNCE_ADVANCEMENTS = BUILDER
+            .comment("Relay player advancement / achievement completions.")
+            .define("announceAdvancements", true);
+
     private static final ForgeConfigSpec.BooleanValue SANITIZE_MARKDOWN = BUILDER
             .comment("Escape Discord markdown (* _ ~ ` | > backslash) in relayed text.",
                      "OFF by default. Turn on if untrusted players can chat: without it a player",
@@ -137,6 +145,8 @@ public final class DiscordConfig
     public static boolean announceLeave = true;
     public static boolean announceChat = true;
     public static boolean announceDeath = true;
+    public static boolean announceCommands = true;
+    public static boolean announceAdvancements = true;
     public static boolean sanitizeMarkdown = false;
     public static boolean suppressMentions = false;
     public static boolean maskUrlInStatus = false;
@@ -174,6 +184,8 @@ public final class DiscordConfig
         announceLeave = ANNOUNCE_LEAVE.get();
         announceChat = ANNOUNCE_CHAT.get();
         announceDeath = ANNOUNCE_DEATH.get();
+        announceCommands = ANNOUNCE_COMMANDS.get();
+        announceAdvancements = ANNOUNCE_ADVANCEMENTS.get();
         sanitizeMarkdown = SANITIZE_MARKDOWN.get();
         suppressMentions = SUPPRESS_MENTIONS.get();
         maskUrlInStatus = MASK_URL_IN_STATUS.get();
@@ -233,6 +245,14 @@ public final class DiscordConfig
                 return apply(() -> ANNOUNCE_CHAT.set(value));
             case "death":
                 return apply(() -> ANNOUNCE_DEATH.set(value));
+            case "commands":
+            case "command":
+                return apply(() -> ANNOUNCE_COMMANDS.set(value));
+            case "advancements":
+            case "advancement":
+            case "achievements":
+            case "achievement":
+                return apply(() -> ANNOUNCE_ADVANCEMENTS.set(value));
             default:
                 return false;
         }

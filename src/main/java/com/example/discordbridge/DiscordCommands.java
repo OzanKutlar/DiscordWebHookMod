@@ -59,7 +59,9 @@ public final class DiscordCommands
                         .then(eventToggle("join"))
                         .then(eventToggle("leave"))
                         .then(eventToggle("chat"))
-                        .then(eventToggle("death")))
+                        .then(eventToggle("death"))
+                        .then(eventToggle("commands"))
+                        .then(eventToggle("advancements")))
                 .then(Commands.literal("safety")
                         .then(Commands.literal("sanitizeMarkdown")
                                 .then(Commands.argument("value", BoolArgumentType.bool())
@@ -231,7 +233,9 @@ public final class DiscordCommands
         text.append("  events: join=").append(DiscordConfig.announceJoin)
                 .append(" leave=").append(DiscordConfig.announceLeave)
                 .append(" chat=").append(DiscordConfig.announceChat)
-                .append(" death=").append(DiscordConfig.announceDeath).append('\n');
+                .append(" death=").append(DiscordConfig.announceDeath)
+                .append(" commands=").append(DiscordConfig.announceCommands)
+                .append(" advancements=").append(DiscordConfig.announceAdvancements).append('\n');
         text.append("  safety: sanitizeMarkdown=").append(DiscordConfig.sanitizeMarkdown)
                 .append(" suppressMentions=").append(DiscordConfig.suppressMentions)
                 .append(" maskUrlInStatus=").append(DiscordConfig.maskUrlInStatus)
