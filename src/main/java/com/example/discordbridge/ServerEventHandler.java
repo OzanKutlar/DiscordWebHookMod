@@ -145,7 +145,7 @@ public final class ServerEventHandler
         final Component line = Component.literal("[MVP").withStyle(ChatFormatting.GOLD)
                 .append(Component.literal("++").withStyle(plusColor))
                 .append(Component.literal("] ").withStyle(ChatFormatting.GOLD))
-                .append(Component.literal(player.getGameProfile().getName()).withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(player.getGameProfile().getName()).withStyle(ChatFormatting.GOLD))
                 .append(Component.literal(": " + text).withStyle(ChatFormatting.WHITE));
 
         final MinecraftServer server = player.getServer();
