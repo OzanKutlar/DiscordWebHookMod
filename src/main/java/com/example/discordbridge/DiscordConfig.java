@@ -64,6 +64,18 @@ public final class DiscordConfig
             .comment("Relay player advancement / achievement completions.")
             .define("announceAdvancements", true);
 
+    private static final ForgeConfigSpec.BooleanValue ANNOUNCE_SERVER_START = BUILDER
+            .comment("Relay server startup events.")
+            .define("announceServerStart", true);
+
+    private static final ForgeConfigSpec.BooleanValue ANNOUNCE_SERVER_STOP = BUILDER
+            .comment("Relay server stopping events.")
+            .define("announceServerStop", true);
+
+    private static final ForgeConfigSpec.BooleanValue USE_RICH_EMBEDS = BUILDER
+            .comment("Use rich Discord embeds for lifecycle, join/leave, deaths, and advancements.")
+            .define("useRichEmbeds", true);
+
     private static final ForgeConfigSpec.BooleanValue SANITIZE_MARKDOWN = BUILDER
             .comment("Escape Discord markdown (* _ ~ ` | > backslash) in relayed text.",
                      "OFF by default. Turn on if untrusted players can chat: without it a player",
@@ -143,6 +155,9 @@ public final class DiscordConfig
     public static boolean announceDeath = true;
     public static boolean announceCommands = true;
     public static boolean announceAdvancements = true;
+    public static boolean announceServerStart = true;
+    public static boolean announceServerStop = true;
+    public static boolean useRichEmbeds = true;
     public static boolean sanitizeMarkdown = false;
     public static boolean suppressMentions = false;
     public static boolean maskUrlInStatus = false;
@@ -181,6 +196,9 @@ public final class DiscordConfig
         announceDeath = ANNOUNCE_DEATH.get();
         announceCommands = ANNOUNCE_COMMANDS.get();
         announceAdvancements = ANNOUNCE_ADVANCEMENTS.get();
+        announceServerStart = ANNOUNCE_SERVER_START.get();
+        announceServerStop = ANNOUNCE_SERVER_STOP.get();
+        useRichEmbeds = USE_RICH_EMBEDS.get();
         sanitizeMarkdown = SANITIZE_MARKDOWN.get();
         suppressMentions = SUPPRESS_MENTIONS.get();
         maskUrlInStatus = MASK_URL_IN_STATUS.get();
@@ -247,6 +265,18 @@ public final class DiscordConfig
             case "achievements":
             case "achievement":
                 return apply(() -> ANNOUNCE_ADVANCEMENTS.set(value));
+            case "server":
+            case "lifecycle":
+                final boolean a = apply(() -> ANNOUNCE_SERVER_START.set(value));
+                final boolean b = apply(() -> ANNOUNCE_SERVER_STOP.set(value));
+                return a && b;
+            case "start":
+                return apply(() -> ANNOUNCE_SERVER_START.set(value));
+            case "stop":
+                return apply(() -> ANNOUNCE_SERVER_STOP.set(value));
+            case "embeds":
+            case "embed":
+                return apply(() -> USE_RICH_EMBEDS.set(value));
             default:
                 return false;
         }

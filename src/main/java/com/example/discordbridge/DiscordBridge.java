@@ -56,11 +56,13 @@ public class DiscordBridge
         BOT_MANAGER.start(event.getServer());
         LOGGER.info("Discord Bridge ready (enabled={}, webhook configured={}, inbound={})",
                 DiscordConfig.enabled, !DiscordConfig.webhookUrl.isBlank(), DiscordConfig.inboundEnabled);
+        SENDER.sendServerStarted(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopping(final ServerStoppingEvent event)
     {
+        SENDER.sendServerStopping(event.getServer());
         BOT_MANAGER.stop();
         SENDER.stop();
     }

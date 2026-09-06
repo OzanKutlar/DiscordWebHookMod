@@ -60,7 +60,9 @@ public final class DiscordCommands
                         .then(eventToggle("chat"))
                         .then(eventToggle("death"))
                         .then(eventToggle("commands"))
-                        .then(eventToggle("advancements")))
+                        .then(eventToggle("advancements"))
+                        .then(eventToggle("server"))
+                        .then(eventToggle("embeds")))
                 .then(Commands.literal("safety")
                         .then(Commands.literal("sanitizeMarkdown")
                                 .then(Commands.argument("value", BoolArgumentType.bool())
@@ -214,7 +216,9 @@ public final class DiscordCommands
                 .append(" chat=").append(DiscordConfig.announceChat)
                 .append(" death=").append(DiscordConfig.announceDeath)
                 .append(" commands=").append(DiscordConfig.announceCommands)
-                .append(" advancements=").append(DiscordConfig.announceAdvancements).append('\n');
+                .append(" advancements=").append(DiscordConfig.announceAdvancements)
+                .append(" server=").append(DiscordConfig.announceServerStart && DiscordConfig.announceServerStop)
+                .append(" embeds=").append(DiscordConfig.useRichEmbeds).append('\n');
         text.append("  safety: sanitizeMarkdown=").append(DiscordConfig.sanitizeMarkdown)
                 .append(" suppressMentions=").append(DiscordConfig.suppressMentions)
                 .append(" maskUrlInStatus=").append(DiscordConfig.maskUrlInStatus)

@@ -3,7 +3,11 @@ package com.example.discordbridge;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.logging.LogUtils;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
+
+import java.time.Instant;
 
 import java.io.IOException;
 import java.net.URI;
@@ -96,24 +100,118 @@ public final class DiscordWebhookSender
      */
     public void send(final String rawContent)
     {
-        dispatch(rawContent, null);
+        dispatch(rawContent, null, null, null, null);
     }
 
     /**
      * Send and report the outcome.
-     *
-     * @param callback receives null on success or a short human-readable reason on failure.
-     *                 It runs on the webhook worker thread, so the caller is responsible
-     *                 for hopping back to the server thread if it touches game state.
      */
     public void sendWithResult(final String rawContent, final Consumer<String> callback)
     {
-        dispatch(rawContent, callback);
+        dispatch(rawContent, null, null, null, callback);
     }
 
-    private void dispatch(final String rawContent, final Consumer<String> callback)
+    /**
+     * Relays an in-game player chat message with their specific username and skin head avatar.
+     */
+    public void sendChat(final String rawContent, final ServerPlayer player)
     {
-        if (rawContent == null || rawContent.isBlank())
+        final String username = player.getGameProfile().getName();
+        final String avatarUrl = "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png";
+        dispatch(rawContent, username, avatarUrl, null, null);
+    }
+
+    /**
+     * Sends a rich Discord embed using the default server webhook profile.
+     */
+    public void sendEmbed(final JsonObject embed)
+    {
+        dispatch(null, null, null, embed, null);
+    }
+
+    /**
+     * Sends a rich Discord embed with custom username and avatar overrides.
+     */
+    public void sendEmbed(final JsonObject embed, final String username, final String avatarUrl)
+    {
+        dispatch(null, username, avatarUrl, embed, null);
+    }
+
+    public void sendServerStarted(final MinecraftServer server)
+    {
+        if (!DiscordConfig.announceServerStart)
+        {
+            return;
+        }
+        if (!DiscordConfig.useRichEmbeds)
+        {
+            send(":white_check_mark: **Server has started!** (Minecraft " + server.getServerVersion() + ")");
+            return;
+        }
+        final JsonObject embed = new JsonObject();
+        embed.addProperty("title", "Server Online");
+        embed.addProperty("description", "The Minecraft server is online and ready to accept connections.");
+        embed.addProperty("color", 0x57F287); // Green
+
+        final JsonArray fields = new JsonArray();
+        final JsonObject versionField = new JsonObject();
+        versionField.addProperty("name", "Version");
+        versionField.addProperty("value", "Minecraft " + server.getServerVersion());
+        versionField.addProperty("inline", true);
+        fields.add(versionField);
+
+        final JsonObject playersField = new JsonObject();
+        playersField.addProperty("name", "Players");
+        playersField.addProperty("value", "0 / " + server.getPlayerList().getMaxPlayers());
+        playersField.addProperty("inline", true);
+        fields.add(playersField);
+
+        embed.add("fields", fields);
+        embed.addProperty("timestamp", Instant.now().toString());
+
+        final JsonObject footer = new JsonObject();
+        footer.addProperty("text", DiscordConfig.username.isBlank() ? "Minecraft Server" : DiscordConfig.username);
+        if (!DiscordConfig.avatarUrl.isBlank())
+        {
+            footer.addProperty("icon_url", DiscordConfig.avatarUrl);
+        }
+        embed.add("footer", footer);
+
+        sendEmbed(embed);
+    }
+
+    public void sendServerStopping(final MinecraftServer server)
+    {
+        if (!DiscordConfig.announceServerStop)
+        {
+            return;
+        }
+        if (!DiscordConfig.useRichEmbeds)
+        {
+            send(":octagonal_sign: **Server is shutting down!**");
+            return;
+        }
+        final JsonObject embed = new JsonObject();
+        embed.addProperty("title", "Server Offline");
+        embed.addProperty("description", "The server is shutting down.");
+        embed.addProperty("color", 0xED4245); // Red
+        embed.addProperty("timestamp", Instant.now().toString());
+
+        final JsonObject footer = new JsonObject();
+        footer.addProperty("text", DiscordConfig.username.isBlank() ? "Minecraft Server" : DiscordConfig.username);
+        if (!DiscordConfig.avatarUrl.isBlank())
+        {
+            footer.addProperty("icon_url", DiscordConfig.avatarUrl);
+        }
+        embed.add("footer", footer);
+
+        sendEmbed(embed);
+    }
+
+    private void dispatch(final String rawContent, final String username, final String avatarUrl,
+                          final JsonObject embed, final Consumer<String> callback)
+    {
+        if ((rawContent == null || rawContent.isBlank()) && embed == null)
         {
             report(callback, "Nothing to send.");
             return;
@@ -143,7 +241,10 @@ public final class DiscordWebhookSender
             return;
         }
 
-        final String payload = buildPayload(prepareContent(rawContent));
+        final String preparedContent = (rawContent != null && !rawContent.isBlank())
+                ? prepareContent(rawContent)
+                : null;
+        final String payload = buildPayload(preparedContent, username, avatarUrl, embed);
         try
         {
             worker.execute(() -> post(httpClient, url, payload, callback));
@@ -214,19 +315,39 @@ public final class DiscordWebhookSender
         }
     }
 
-    private static String buildPayload(final String content)
+    private static String buildPayload(final String content, final String username,
+                                       final String avatarUrl, final JsonObject embed)
     {
         final JsonObject json = new JsonObject();
-        json.addProperty("content", content);
-
-        if (!DiscordConfig.username.isBlank())
+        if (content != null && !content.isBlank())
+        {
+            json.addProperty("content", content);
+        }
+        if (username != null && !username.isBlank())
+        {
+            json.addProperty("username", username);
+        }
+        else if (!DiscordConfig.username.isBlank())
         {
             json.addProperty("username", DiscordConfig.username);
         }
-        if (!DiscordConfig.avatarUrl.isBlank())
+
+        if (avatarUrl != null && !avatarUrl.isBlank())
+        {
+            json.addProperty("avatar_url", avatarUrl);
+        }
+        else if (!DiscordConfig.avatarUrl.isBlank())
         {
             json.addProperty("avatar_url", DiscordConfig.avatarUrl);
         }
+
+        if (embed != null)
+        {
+            final JsonArray embeds = new JsonArray();
+            embeds.add(embed);
+            json.add("embeds", embeds);
+        }
+
         if (DiscordConfig.suppressMentions)
         {
             final JsonObject allowed = new JsonObject();

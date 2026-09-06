@@ -1,10 +1,14 @@
 package com.example.discordbridge;
 
+import com.google.gson.JsonObject;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.advancements.FrameType;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+
+import java.time.Instant;
 import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -39,7 +43,33 @@ public final class ServerEventHandler
         {
             return;
         }
-        DiscordBridge.sender().send("**" + player.getGameProfile().getName() + "** joined the server");
+        final String name = player.getGameProfile().getName();
+        final MinecraftServer server = player.getServer();
+        final int current = server != null ? server.getPlayerList().getPlayerCount() : 1;
+        final int max = server != null ? server.getPlayerList().getMaxPlayers() : 20;
+
+        if (DiscordConfig.useRichEmbeds)
+        {
+            final JsonObject embed = new JsonObject();
+            embed.addProperty("description", "**" + name + "** joined the server");
+            embed.addProperty("color", 0x57F287); // Green
+            embed.addProperty("timestamp", Instant.now().toString());
+
+            final JsonObject author = new JsonObject();
+            author.addProperty("name", name);
+            author.addProperty("icon_url", "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png");
+            embed.add("author", author);
+
+            final JsonObject footer = new JsonObject();
+            footer.addProperty("text", "Online: " + current + " / " + max);
+            embed.add("footer", footer);
+
+            DiscordBridge.sender().sendEmbed(embed);
+        }
+        else
+        {
+            DiscordBridge.sender().send("**" + name + "** joined the server (" + current + "/" + max + ")");
+        }
     }
 
     @SubscribeEvent
@@ -53,7 +83,36 @@ public final class ServerEventHandler
         {
             return;
         }
-        DiscordBridge.sender().send("**" + player.getGameProfile().getName() + "** left the server");
+        final String name = player.getGameProfile().getName();
+        final MinecraftServer server = player.getServer();
+        final int playerCount = server != null ? server.getPlayerList().getPlayerCount() : 0;
+        final int remaining = (server != null && server.getPlayerList().getPlayers().contains(player))
+                ? Math.max(0, playerCount - 1)
+                : playerCount;
+        final int max = server != null ? server.getPlayerList().getMaxPlayers() : 20;
+
+        if (DiscordConfig.useRichEmbeds)
+        {
+            final JsonObject embed = new JsonObject();
+            embed.addProperty("description", "**" + name + "** left the server");
+            embed.addProperty("color", 0xE67E22); // Orange
+            embed.addProperty("timestamp", Instant.now().toString());
+
+            final JsonObject author = new JsonObject();
+            author.addProperty("name", name);
+            author.addProperty("icon_url", "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png");
+            embed.add("author", author);
+
+            final JsonObject footer = new JsonObject();
+            footer.addProperty("text", "Online: " + remaining + " / " + max);
+            embed.add("footer", footer);
+
+            DiscordBridge.sender().sendEmbed(embed);
+        }
+        else
+        {
+            DiscordBridge.sender().send("**" + name + "** left the server (" + remaining + "/" + max + ")");
+        }
     }
 
     @SubscribeEvent
@@ -73,7 +132,7 @@ public final class ServerEventHandler
         {
             return;
         }
-        DiscordBridge.sender().send("**" + player.getGameProfile().getName() + "**: " + text);
+        DiscordBridge.sender().sendChat(text, player);
     }
 
     @SubscribeEvent
@@ -91,10 +150,29 @@ public final class ServerEventHandler
         {
             return;
         }
-        final String message = player.getCombatTracker().getDeathMessage().getString();
-        DiscordBridge.sender().send(message.isBlank()
+        final String rawMessage = player.getCombatTracker().getDeathMessage().getString();
+        final String message = rawMessage.isBlank()
                 ? player.getGameProfile().getName() + " died"
-                : message);
+                : rawMessage;
+
+        if (DiscordConfig.useRichEmbeds)
+        {
+            final JsonObject embed = new JsonObject();
+            embed.addProperty("description", ":skull: " + message);
+            embed.addProperty("color", 0x992D22); // Dark Red
+            embed.addProperty("timestamp", Instant.now().toString());
+
+            final JsonObject author = new JsonObject();
+            author.addProperty("name", player.getGameProfile().getName());
+            author.addProperty("icon_url", "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png");
+            embed.add("author", author);
+
+            DiscordBridge.sender().sendEmbed(embed);
+        }
+        else
+        {
+            DiscordBridge.sender().send(message);
+        }
     }
 
     @SubscribeEvent
@@ -119,20 +197,39 @@ public final class ServerEventHandler
         final String title = display.getTitle().getString();
         final String playerName = player.getGameProfile().getName();
 
-        final String description;
+        final String actionText;
         if (frameType == FrameType.CHALLENGE)
         {
-            description = "**" + playerName + "** has completed the challenge **[" + title + "]**";
+            actionText = "has completed the challenge";
         }
         else if (frameType == FrameType.GOAL)
         {
-            description = "**" + playerName + "** has reached the goal **[" + title + "]**";
+            actionText = "has reached the goal";
         }
         else
         {
-            description = "**" + playerName + "** has made the advancement **[" + title + "]**";
+            actionText = "has made the advancement";
         }
-        DiscordBridge.sender().send(description);
+
+        if (DiscordConfig.useRichEmbeds)
+        {
+            final JsonObject embed = new JsonObject();
+            embed.addProperty("title", title);
+            embed.addProperty("description", "**" + playerName + "** " + actionText + " **[" + title + "]**\n*" + display.getDescription().getString() + "*");
+            embed.addProperty("color", frameType == FrameType.CHALLENGE ? 0x9B59B6 : 0xF1C40F);
+            embed.addProperty("timestamp", Instant.now().toString());
+
+            final JsonObject author = new JsonObject();
+            author.addProperty("name", playerName);
+            author.addProperty("icon_url", "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png");
+            embed.add("author", author);
+
+            DiscordBridge.sender().sendEmbed(embed);
+        }
+        else
+        {
+            DiscordBridge.sender().send("**" + playerName + "** " + actionText + " **[" + title + "]**");
+        }
     }
 
     @SubscribeEvent
