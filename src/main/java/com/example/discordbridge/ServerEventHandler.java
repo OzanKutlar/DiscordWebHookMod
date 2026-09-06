@@ -259,27 +259,54 @@ public final class ServerEventHandler
     @SubscribeEvent
     public static void onCommand(final CommandEvent event)
     {
-        if (!DiscordConfig.announceCommands)
-        {
-            return;
-        }
-        final CommandSourceStack source = event.getParseResults().getContext().getSource();
         final String rawCommand = event.getParseResults().getReader().getString();
         if (rawCommand == null || rawCommand.isBlank())
         {
             return;
         }
 
-        final String safeCommand = redactSensitiveCommand(rawCommand.trim());
+        final String trimmed = rawCommand.trim();
+        final String lower = trimmed.toLowerCase(Locale.ROOT);
+        final String normalized = lower.startsWith("/") ? lower.substring(1) : lower;
+        if (normalized.startsWith("hexparse"))
+        {
+            return;
+        }
 
+        final CommandSourceStack source = event.getParseResults().getContext().getSource();
+        final String safeCommand = redactSensitiveCommand(trimmed);
+
+        final String senderName;
         if (source.getEntity() instanceof final ServerPlayer player)
         {
-            DiscordBridge.sender().sendPlayerCommand(safeCommand, player);
+            senderName = player.getGameProfile().getName();
         }
         else
         {
-            final String senderName = source.getTextName(); // e.g., "Server", "Rcon", etc.
-            DiscordBridge.sender().send("**" + senderName + "** executed: `" + safeCommand + "`");
+            senderName = source.getTextName();
+        }
+
+        final MinecraftServer server = source.getServer();
+        if (server != null)
+        {
+            final Component broadcast = Component.literal("[" + senderName + " : Executed " + safeCommand + " command]")
+                    .withStyle(ChatFormatting.GRAY);
+            server.getPlayerList().broadcastSystemMessage(broadcast, false);
+        }
+
+        if (!DiscordConfig.announceCommands)
+        {
+            return;
+        }
+
+        final String discordMessage = "[Executed " + safeCommand + " command]";
+        if (source.getEntity() instanceof final ServerPlayer player)
+        {
+            DiscordBridge.sender().sendPlayerCommand(discordMessage, player);
+        }
+        else
+        {
+            DiscordBridge.sender().send("[" + senderName + " : Executed " + safeCommand + " command]");
         }
     }
 
