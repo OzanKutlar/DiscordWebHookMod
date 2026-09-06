@@ -10,7 +10,6 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -33,7 +32,7 @@ public final class DiscordEventListener extends ListenerAdapter
     }
 
     @Override
-    public void onReady(final @NotNull ReadyEvent event)
+    public void onReady(final ReadyEvent event)
     {
         LOGGER.info("Discord bot connected as {}", event.getJDA().getSelfUser().getAsTag());
 
@@ -60,7 +59,7 @@ public final class DiscordEventListener extends ListenerAdapter
     }
 
     @Override
-    public void onSlashCommandInteraction(final @NotNull SlashCommandInteractionEvent event)
+    public void onSlashCommandInteraction(final SlashCommandInteractionEvent event)
     {
         if (!PLAYERS_COMMAND.equals(event.getName()))
         {
@@ -102,7 +101,7 @@ public final class DiscordEventListener extends ListenerAdapter
     }
 
     @Override
-    public void onMessageReceived(final @NotNull MessageReceivedEvent event)
+    public void onMessageReceived(final MessageReceivedEvent event)
     {
         // Loop guard: ignore bots and webhooks (outbound webhook messages land here)
         if (event.getAuthor().isBot() || event.isWebhookMessage())

@@ -132,9 +132,15 @@ configurations {
 
 dependencies {
     // Specify the version of Minecraft to use.
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly 'org.slf4j:slf4j-api:2.0.7'
+    compileOnly 'org.jetbrains:annotations:24.0.1'
+
     shade('net.dv8tion:JDA:5.0.0') {
         exclude module: 'opus-java'
         exclude group: 'org.slf4j'
+        exclude group: 'org.jetbrains', module: 'annotations'
     }
     // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
     // The "userdev" classifier will be requested and setup by ForgeGradle.
