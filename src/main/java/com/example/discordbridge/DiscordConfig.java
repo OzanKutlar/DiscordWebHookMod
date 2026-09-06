@@ -142,6 +142,10 @@ public final class DiscordConfig
             .comment("Answer '/stats' in the Discord channel with player statistics and leaderboards.")
             .define("respondToStatsCommand", true);
 
+    private static final ForgeConfigSpec.ConfigValue<String> OWNER_DISCORD_ID = BUILDER
+            .comment("Discord user ID allowed to run /restart and /cmd operator console commands.")
+            .define("ownerDiscordId", "462616453653331968");
+
     static
     {
         BUILDER.pop();
@@ -174,6 +178,7 @@ public final class DiscordConfig
     public static boolean relayAttachments = true;
     public static boolean respondToPlayersCommand = true;
     public static boolean respondToStatsCommand = true;
+    public static String ownerDiscordId = "462616453653331968";
 
     private DiscordConfig()
     {
@@ -216,6 +221,11 @@ public final class DiscordConfig
         relayAttachments = RELAY_ATTACHMENTS.get();
         respondToPlayersCommand = RESPOND_TO_PLAYERS_COMMAND.get();
         respondToStatsCommand = RESPOND_TO_STATS_COMMAND.get();
+        ownerDiscordId = safe(OWNER_DISCORD_ID.get());
+        if (ownerDiscordId.isBlank())
+        {
+            ownerDiscordId = "462616453653331968";
+        }
     }
 
     private static String safe(final String value)
@@ -321,6 +331,18 @@ public final class DiscordConfig
     public static boolean setChannelId(final String value)
     {
         return apply(() -> CHANNEL_ID.set(safe(value)));
+    }
+
+    /**
+     * Checks if the given Discord user ID matches the authorized owner ID.
+     */
+    public static boolean isOwner(final String discordUserId)
+    {
+        if (discordUserId == null || discordUserId.isBlank())
+        {
+            return false;
+        }
+        return discordUserId.trim().equals(ownerDiscordId);
     }
 
     private static boolean apply(final Runnable mutation)

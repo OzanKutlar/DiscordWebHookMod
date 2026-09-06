@@ -28,6 +28,9 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final String PLAYERS_COMMAND = "players";
     private static final String CLEAR_CHAT_COMMAND = "clearchat";
     private static final String STATS_COMMAND = "stats";
+    private static final String STATUS_COMMAND = "status";
+    private static final String RESTART_COMMAND = "restart";
+    private static final String CMD_COMMAND = "cmd";
     private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
     private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
 
@@ -48,9 +51,13 @@ public final class DiscordEventListener extends ListenerAdapter
                 Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft"),
                 Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel"),
                 Commands.slash(STATS_COMMAND, "Shows server player statistics and leaderboards")
-                        .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false)
+                        .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false),
+                Commands.slash(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime"),
+                Commands.slash(RESTART_COMMAND, "Gracefully restarts/stops the Minecraft server (Owner only)"),
+                Commands.slash(CMD_COMMAND, "Executes a Minecraft console command with OP level 4 (Owner only)")
+                        .addOption(OptionType.STRING, "command", "The command to execute (e.g. op, time set day)", true)
         ).queue(
-                success -> LOGGER.info("Registered global slash commands (/players, /clearchat, /stats)."),
+                success -> LOGGER.info("Registered global slash commands (/players, /clearchat, /stats, /status, /restart, /cmd)."),
                 error -> LOGGER.warn("Could not register global slash commands: {}", error.getMessage())
         );
 
@@ -75,6 +82,21 @@ public final class DiscordEventListener extends ListenerAdapter
                         success -> LOGGER.info("Registered /stats slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /stats command: {}", error.getMessage())
                 );
+                channel.getGuild().upsertCommand(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime").queue(
+                        success -> LOGGER.info("Registered /status slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /status command: {}", error.getMessage())
+                );
+                channel.getGuild().upsertCommand(RESTART_COMMAND, "Gracefully restarts/stops the Minecraft server (Owner only)").queue(
+                        success -> LOGGER.info("Registered /restart slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /restart command: {}", error.getMessage())
+                );
+                channel.getGuild().upsertCommand(
+                        Commands.slash(CMD_COMMAND, "Executes a Minecraft console command with OP level 4 (Owner only)")
+                                .addOption(OptionType.STRING, "command", "The command to execute", true)
+                ).queue(
+                        success -> LOGGER.info("Registered /cmd slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /cmd command: {}", error.getMessage())
+                );
             }
         }
     }
@@ -90,6 +112,21 @@ public final class DiscordEventListener extends ListenerAdapter
         if (STATS_COMMAND.equals(event.getName()))
         {
             handleStatsCommand(event);
+            return;
+        }
+        if (STATUS_COMMAND.equals(event.getName()))
+        {
+            handleStatusCommand(event);
+            return;
+        }
+        if (RESTART_COMMAND.equals(event.getName()))
+        {
+            handleRestartCommand(event);
+            return;
+        }
+        if (CMD_COMMAND.equals(event.getName()))
+        {
+            handleCmdCommand(event);
             return;
         }
         if (!PLAYERS_COMMAND.equals(event.getName()))
@@ -171,6 +208,21 @@ public final class DiscordEventListener extends ListenerAdapter
             {
                 respondToTextStats(event, raw);
             }
+            return;
+        }
+        if ("!status".equalsIgnoreCase(raw))
+        {
+            respondToTextStatus(event);
+            return;
+        }
+        if ("!restart".equalsIgnoreCase(raw))
+        {
+            respondToTextRestart(event);
+            return;
+        }
+        if (raw.toLowerCase().startsWith("!cmd "))
+        {
+            respondToTextCmd(event, raw.substring(5).trim());
             return;
         }
 
@@ -373,6 +425,106 @@ public final class DiscordEventListener extends ListenerAdapter
                     : PlayerStatsService.buildPlayerStatsEmbed(mc, targetPlayer);
             event.getChannel().sendMessageEmbeds(embed).queue();
         });
+    }
+
+    private void handleStatusCommand(final SlashCommandInteractionEvent event)
+    {
+        event.deferReply().queue(hook -> {
+            final MinecraftServer mc = server;
+            if (mc == null)
+            {
+                hook.sendMessage("Server is not available.").queue();
+                return;
+            }
+            final MessageEmbed embed = DiscordAdminService.buildStatusEmbed(mc);
+            hook.sendMessageEmbeds(embed).queue();
+        });
+    }
+
+    private void handleRestartCommand(final SlashCommandInteractionEvent event)
+    {
+        if (!DiscordConfig.isOwner(event.getUser().getId()))
+        {
+            event.reply(":x: You are not authorized to restart the server.").setEphemeral(true).queue();
+            return;
+        }
+
+        event.deferReply().queue(hook -> {
+            final MinecraftServer mc = server;
+            if (mc == null)
+            {
+                hook.sendMessage(":x: Server is not available.").queue();
+                return;
+            }
+            hook.sendMessage(":arrows_counterclockwise: Server restart initiated by **" + event.getUser().getAsTag() + "**...").queue();
+            DiscordAdminService.restartServer(mc, event.getUser().getAsTag());
+        });
+    }
+
+    private void handleCmdCommand(final SlashCommandInteractionEvent event)
+    {
+        if (!DiscordConfig.isOwner(event.getUser().getId()))
+        {
+            event.reply(":x: You are not authorized to execute operator commands.").setEphemeral(true).queue();
+            return;
+        }
+
+        final OptionMapping cmdOpt = event.getOption("command");
+        if (cmdOpt == null || cmdOpt.getAsString().isBlank())
+        {
+            event.reply(":x: Please specify a command to execute.").setEphemeral(true).queue();
+            return;
+        }
+
+        final String command = cmdOpt.getAsString().trim();
+        event.deferReply().queue(hook -> {
+            final MinecraftServer mc = server;
+            if (mc == null)
+            {
+                hook.sendMessage(":x: Server is not available.").queue();
+                return;
+            }
+            DiscordAdminService.executeConsoleCommand(mc, command, result -> hook.sendMessage(result).queue());
+        });
+    }
+
+    private void respondToTextStatus(final MessageReceivedEvent event)
+    {
+        final MinecraftServer mc = server;
+        if (mc != null)
+        {
+            final MessageEmbed embed = DiscordAdminService.buildStatusEmbed(mc);
+            event.getChannel().sendMessageEmbeds(embed).queue();
+        }
+    }
+
+    private void respondToTextRestart(final MessageReceivedEvent event)
+    {
+        if (!DiscordConfig.isOwner(event.getAuthor().getId()))
+        {
+            event.getMessage().reply(":x: You are not authorized to restart the server.").queue();
+            return;
+        }
+        final MinecraftServer mc = server;
+        if (mc != null)
+        {
+            event.getChannel().sendMessage(":arrows_counterclockwise: Server restart initiated by **" + event.getAuthor().getAsTag() + "**...").queue();
+            DiscordAdminService.restartServer(mc, event.getAuthor().getAsTag());
+        }
+    }
+
+    private void respondToTextCmd(final MessageReceivedEvent event, final String command)
+    {
+        if (!DiscordConfig.isOwner(event.getAuthor().getId()))
+        {
+            event.getMessage().reply(":x: You are not authorized to execute operator commands.").queue();
+            return;
+        }
+        final MinecraftServer mc = server;
+        if (mc != null)
+        {
+            DiscordAdminService.executeConsoleCommand(mc, command, result -> event.getChannel().sendMessage(result).queue());
+        }
     }
 
     private void respondToTextPlayers(final MessageReceivedEvent event)

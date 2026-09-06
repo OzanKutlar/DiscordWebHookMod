@@ -69,6 +69,9 @@ The bot registers official Discord slash commands directly to your guild for ins
 - **`/stats`** (or `!stats` text): Shows server leaderboards (Most Mobs Killed, Most Blocks Mined, Most Time Played, Most Blocks Walked, Most Achievements) and live Current Health and EXP of online players.
 - **`/stats player:<name>`** (or `!stats <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
 - **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).
+- **`/status`** (or `!status` text): Shows server performance, TPS, RAM usage, and uptime.
+- **`/restart`** (or `!restart` text): Gracefully restarts/stops the Minecraft server (strictly restricted to owner Discord ID `462616453653331968`).
+- **`/cmd <command>`** (or `!cmd <command>` text): Executes any console command with Operator level 4 (`OP`) permissions and returns the output to Discord (strictly restricted to owner Discord ID `462616453653331968`).
 
 Turn commands off with `respondToPlayersCommand = false` or `respondToStatsCommand = false` in the config.
 
