@@ -112,13 +112,50 @@ public final class DiscordWebhookSender
     }
 
     /**
+     * Returns the Crafatar isometric 3D head avatar URL for a player.
+     */
+    public static String getPlayerAvatarUrl(final ServerPlayer player)
+    {
+        return "https://crafatar.com/renders/head/" + player.getStringUUID() + "?overlay";
+    }
+
+    /**
+     * Returns true if the player has operator permissions.
+     */
+    public static boolean isOp(final ServerPlayer player)
+    {
+        if (player == null)
+        {
+            return false;
+        }
+        final MinecraftServer server = player.getServer();
+        if (server != null && server.getPlayerList().isOp(player.getGameProfile()))
+        {
+            return true;
+        }
+        return player.hasPermissions(2);
+    }
+
+    /**
      * Relays an in-game player chat message with their specific username and skin head avatar.
      */
     public void sendChat(final String rawContent, final ServerPlayer player)
     {
-        final String username = player.getGameProfile().getName();
-        final String avatarUrl = "https://mc-heads.net/avatar/" + player.getStringUUID() + "/100.png";
+        final boolean op = isOp(player);
+        final String username = (op ? "[ADMIN] " : "") + player.getGameProfile().getName();
+        final String avatarUrl = getPlayerAvatarUrl(player);
         dispatch(rawContent, username, avatarUrl, null, null);
+    }
+
+    /**
+     * Relays an in-game player command with their specific username and skin head avatar.
+     */
+    public void sendPlayerCommand(final String command, final ServerPlayer player)
+    {
+        final boolean op = isOp(player);
+        final String username = (op ? "[ADMIN] " : "") + player.getGameProfile().getName();
+        final String avatarUrl = getPlayerAvatarUrl(player);
+        dispatch(command, username, avatarUrl, null, null);
     }
 
     /**

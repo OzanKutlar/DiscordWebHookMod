@@ -3,7 +3,6 @@ package com.example.discordbridge;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import java.util.concurrent.ThreadLocalRandom;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 
@@ -15,11 +14,6 @@ final class DiscordMessageFormatter
     private static final char SECTION_SIGN = '\u00A7';
     private static final String UNKNOWN_AUTHOR = "unknown";
     private static final String ATTACHMENT_MARKER = "(attachment)";
-    private static final ChatFormatting[] PLUS_COLORS = {
-            ChatFormatting.RED,
-            ChatFormatting.GREEN,
-            ChatFormatting.AQUA
-    };
 
     private DiscordMessageFormatter()
     {
@@ -78,12 +72,8 @@ final class DiscordMessageFormatter
 
     static Component toChatComponent(final String author, final String content)
     {
-        final ChatFormatting plusColor = PLUS_COLORS[ThreadLocalRandom.current().nextInt(PLUS_COLORS.length)];
-
-        return Component.literal("[DC").withStyle(ChatFormatting.AQUA)
-                .append(Component.literal("++").withStyle(plusColor))
-                .append(Component.literal("] ").withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(author).withStyle(ChatFormatting.AQUA))
+        return Component.literal("[DC] ").withStyle(ChatFormatting.DARK_BLUE)
+                .append(Component.literal(author).withStyle(ChatFormatting.DARK_AQUA))
                 .append(Component.literal(": " + content).withStyle(ChatFormatting.WHITE));
     }
 
