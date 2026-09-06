@@ -23,6 +23,9 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final char SECTION_SIGN = '\u00A7';
     private static final String PLAYERS_COMMAND = "players";
+    private static final String CLEAR_CHAT_COMMAND = "clearchat";
+    private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
+    private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
 
     private final MinecraftServer server;
 
@@ -36,12 +39,13 @@ public final class DiscordEventListener extends ListenerAdapter
     {
         LOGGER.info("Discord bot connected as {}", event.getJDA().getSelfUser().getAsTag());
 
-        // Register slash command globally
+        // Register slash commands globally
         event.getJDA().updateCommands().addCommands(
-                Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft")
+                Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft"),
+                Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel")
         ).queue(
-                success -> LOGGER.info("Registered global /players slash command."),
-                error -> LOGGER.warn("Could not register global slash command: {}", error.getMessage())
+                success -> LOGGER.info("Registered global slash commands (/players, /clearchat)."),
+                error -> LOGGER.warn("Could not register global slash commands: {}", error.getMessage())
         );
 
         // Also register directly to the configured guild for instant visibility
@@ -52,7 +56,11 @@ public final class DiscordEventListener extends ListenerAdapter
             {
                 channel.getGuild().upsertCommand(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft").queue(
                         success -> LOGGER.info("Registered /players slash command in guild '{}' for instant use.", channel.getGuild().getName()),
-                        error -> LOGGER.debug("Could not register guild-specific slash command: {}", error.getMessage())
+                        error -> LOGGER.debug("Could not register guild-specific /players command: {}", error.getMessage())
+                );
+                channel.getGuild().upsertCommand(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel").queue(
+                        success -> LOGGER.info("Registered /clearchat slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /clearchat command: {}", error.getMessage())
                 );
             }
         }
@@ -61,6 +69,11 @@ public final class DiscordEventListener extends ListenerAdapter
     @Override
     public void onSlashCommandInteraction(final SlashCommandInteractionEvent event)
     {
+        if (CLEAR_CHAT_COMMAND.equals(event.getName()))
+        {
+            handleClearChatCommand(event);
+            return;
+        }
         if (!PLAYERS_COMMAND.equals(event.getName()))
         {
             return;
@@ -120,13 +133,18 @@ public final class DiscordEventListener extends ListenerAdapter
 
         final String raw = event.getMessage().getContentDisplay().trim();
 
-        // In case someone types !players as text, handle it
+        // In case someone types !players or !clearchat as text, handle it
         if ("!players".equalsIgnoreCase(raw))
         {
             if (DiscordConfig.respondToPlayersCommand)
             {
                 respondToTextPlayers(event);
             }
+            return;
+        }
+        if ("!clearchat".equalsIgnoreCase(raw))
+        {
+            handleTextClearChat(event);
             return;
         }
 
@@ -169,6 +187,100 @@ public final class DiscordEventListener extends ListenerAdapter
         {
             mc.execute(() -> mc.getPlayerList().broadcastSystemMessage(line, false));
         }
+    }
+
+    private void handleClearChatCommand(final SlashCommandInteractionEvent event)
+    {
+        if (event.getMember() == null || !event.getMember().hasPermission(event.getGuildChannel(), net.dv8tion.jda.api.Permission.MESSAGE_MANAGE))
+        {
+            event.reply(":x: You need the 'Manage Messages' permission to use this command.").setEphemeral(true).queue();
+            return;
+        }
+
+        final String userId = event.getUser().getId();
+        event.reply(":warning: Are you sure you want to delete the past 100 messages from this channel?")
+                .addActionRow(
+                        net.dv8tion.jda.api.interactions.components.buttons.Button.danger(BTN_CONFIRM_PREFIX + userId, "Yes"),
+                        net.dv8tion.jda.api.interactions.components.buttons.Button.secondary(BTN_CANCEL_PREFIX + userId, "No")
+                )
+                .queue();
+    }
+
+    private void handleTextClearChat(final MessageReceivedEvent event)
+    {
+        if (!(event.getChannel() instanceof GuildMessageChannel guildChannel))
+        {
+            return;
+        }
+        if (event.getMember() == null || !event.getMember().hasPermission(guildChannel, net.dv8tion.jda.api.Permission.MESSAGE_MANAGE))
+        {
+            event.getMessage().reply(":x: You need the 'Manage Messages' permission to use this command.").queue();
+            return;
+        }
+
+        final String userId = event.getAuthor().getId();
+        guildChannel.sendMessage(":warning: Are you sure you want to delete the past 100 messages from this channel?")
+                .setActionRow(
+                        net.dv8tion.jda.api.interactions.components.buttons.Button.danger(BTN_CONFIRM_PREFIX + userId, "Yes"),
+                        net.dv8tion.jda.api.interactions.components.buttons.Button.secondary(BTN_CANCEL_PREFIX + userId, "No")
+                )
+                .queue();
+    }
+
+    @Override
+    public void onButtonInteraction(final net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent event)
+    {
+        final String buttonId = event.getComponentId();
+        if (!buttonId.startsWith(BTN_CONFIRM_PREFIX) && !buttonId.startsWith(BTN_CANCEL_PREFIX))
+        {
+            return;
+        }
+
+        final boolean isConfirm = buttonId.startsWith(BTN_CONFIRM_PREFIX);
+        final String authorizedUserId = buttonId.substring(isConfirm ? BTN_CONFIRM_PREFIX.length() : BTN_CANCEL_PREFIX.length());
+        final String clickerId = event.getUser().getId();
+
+        if (!clickerId.equals(authorizedUserId))
+        {
+            if (event.getMember() == null || !event.getMember().hasPermission(event.getGuildChannel(), net.dv8tion.jda.api.Permission.MESSAGE_MANAGE))
+            {
+                event.reply(":x: You are not authorized to use this confirmation button.").setEphemeral(true).queue();
+                return;
+            }
+        }
+
+        if (!isConfirm)
+        {
+            event.editMessage(":white_check_mark: Message clearing cancelled.")
+                    .setComponents()
+                    .queue();
+            return;
+        }
+
+        if (!(event.getChannel() instanceof GuildMessageChannel guildChannel))
+        {
+            event.editMessage(":x: Cannot clear messages outside a guild channel.").setComponents().queue();
+            return;
+        }
+
+        event.editMessage(":hourglass_flowing_sand: Deleting the past 100 messages...")
+                .setComponents()
+                .queue(hook -> guildChannel.getHistory().retrievePast(100).queue(
+                        messages -> {
+                            if (messages.isEmpty())
+                            {
+                                hook.editOriginal(":information_source: No messages found to delete.").queue();
+                                return;
+                            }
+                            guildChannel.purgeMessages(messages);
+                            guildChannel.sendMessage(":wastebasket: Cleared " + messages.size() + " messages.")
+                                    .queue(msg -> msg.delete().queueAfter(5, java.util.concurrent.TimeUnit.SECONDS, null, ignored -> {}));
+                        },
+                        error -> {
+                            LOGGER.error("Failed to retrieve past messages for /clearchat: {}", error.getMessage());
+                            hook.editOriginal(":x: Failed to retrieve messages: " + error.getMessage()).queue();
+                        }
+                ));
     }
 
     private void respondToTextPlayers(final MessageReceivedEvent event)
