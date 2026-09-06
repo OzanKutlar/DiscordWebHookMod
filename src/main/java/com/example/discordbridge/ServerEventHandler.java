@@ -1,10 +1,12 @@
 package com.example.discordbridge;
 
 import com.google.gson.JsonObject;
+import net.minecraft.ChatFormatting;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.DisplayInfo;
 import net.minecraft.advancements.FrameType;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -118,10 +120,6 @@ public final class ServerEventHandler
     @SubscribeEvent
     public static void onChat(final ServerChatEvent event)
     {
-        if (!DiscordConfig.announceChat)
-        {
-            return;
-        }
         final ServerPlayer player = event.getPlayer();
         if (player == null)
         {
@@ -132,7 +130,23 @@ public final class ServerEventHandler
         {
             return;
         }
-        DiscordBridge.sender().sendChat(text, player);
+
+        event.setCanceled(true);
+
+        final Component line = Component.literal(player.getGameProfile().getName())
+                .withStyle(ChatFormatting.GOLD)
+                .append(Component.literal(": " + text).withStyle(ChatFormatting.WHITE));
+
+        final MinecraftServer server = player.getServer();
+        if (server != null)
+        {
+            server.getPlayerList().broadcastSystemMessage(line, false);
+        }
+
+        if (DiscordConfig.announceChat)
+        {
+            DiscordBridge.sender().sendChat(text, player);
+        }
     }
 
     @SubscribeEvent

@@ -72,9 +72,8 @@ final class DiscordMessageFormatter
 
     static Component toChatComponent(final String author, final String content)
     {
-        return Component.literal("[Discord] ").withStyle(ChatFormatting.BLUE)
-                .append(Component.literal("<" + author + "> ").withStyle(ChatFormatting.WHITE))
-                .append(Component.literal(content).withStyle(ChatFormatting.GRAY));
+        return Component.literal(author).withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(": " + content).withStyle(ChatFormatting.WHITE));
     }
 
     private static boolean hasAttachments(final JsonObject message)
