@@ -112,11 +112,11 @@ public final class DiscordWebhookSender
     }
 
     /**
-     * Returns the Crafatar isometric 3D head avatar URL for a player.
+     * Returns the MC-Heads isometric 3D head avatar URL for a player.
      */
     public static String getPlayerAvatarUrl(final ServerPlayer player)
     {
-        return "https://crafatar.com/renders/head/" + player.getStringUUID() + "?overlay";
+        return "https://mc-heads.net/head/" + player.getGameProfile().getName();
     }
 
     /**
