@@ -123,7 +123,10 @@ repositories {
     // }
 }
 configurations {
-    shade
+    shade {
+        exclude group: 'org.slf4j'
+        exclude group: 'org.jetbrains', module: 'annotations'
+    }
     implementation.extendsFrom shade
 }
 
@@ -131,6 +134,7 @@ dependencies {
     // Specify the version of Minecraft to use.
     shade('net.dv8tion:JDA:5.0.0') {
         exclude module: 'opus-java'
+        exclude group: 'org.slf4j'
     }
     // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
     // The "userdev" classifier will be requested and setup by ForgeGradle.
@@ -205,12 +209,17 @@ tasks.named('shadowJar').configure {
     configurations = [project.configurations.shade]
     exclude 'META-INF/versions/21/**'
     exclude 'META-INF/versions/22/**'
+    exclude 'org/slf4j/**'
+    exclude 'org/jetbrains/annotations/**'
+    exclude 'org/intellij/lang/annotations/**'
+    exclude '**/*.kotlin_module'
     relocate 'net.dv8tion', 'com.example.discordbridge.shadow.jda'
     relocate 'okhttp3', 'com.example.discordbridge.shadow.okhttp3'
     relocate 'okio', 'com.example.discordbridge.shadow.okio'
     relocate 'com.fasterxml.jackson', 'com.example.discordbridge.shadow.jackson'
     relocate 'com.neovisionaries.ws', 'com.example.discordbridge.shadow.ws'
     relocate 'org.apache.commons.collections4', 'com.example.discordbridge.shadow.collections4'
+    relocate 'gnu.trove', 'com.example.discordbridge.shadow.trove'
     relocate 'kotlin', 'com.example.discordbridge.shadow.kotlin'
     mergeServiceFiles()
     finalizedBy 'reobfShadowJar'
