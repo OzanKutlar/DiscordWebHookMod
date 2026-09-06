@@ -2,7 +2,6 @@ package com.example.discordbridge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -106,10 +105,7 @@ public final class DiscordCommands
                                 .executes(DiscordCommands::setBotToken)))
                 .then(Commands.literal("channel")
                         .then(Commands.argument("id", StringArgumentType.word())
-                                .executes(DiscordCommands::setChannel)))
-                .then(Commands.literal("interval")
-                        .then(Commands.argument("seconds", IntegerArgumentType.integer(2, 60))
-                                .executes(DiscordCommands::setInterval)));
+                                .executes(DiscordCommands::setChannel)));
     }
 
     private static int inboundStatus(final CommandContext<CommandSourceStack> ctx)
@@ -118,11 +114,10 @@ public final class DiscordCommands
         final StringBuilder text = new StringBuilder(192);
         text.append("Discord Bridge inbound relay\n");
         text.append("  enabled: ").append(DiscordConfig.inboundEnabled).append('\n');
-        // The token is a secret and is never printed, only its presence.
+        text.append("  gateway status: ").append(DiscordBridge.botManager().getStatusText()).append('\n');
         text.append("  token: ").append(DiscordConfig.botToken.isBlank() ? "not set" : "set").append('\n');
         text.append("  channel: ")
                 .append(DiscordConfig.channelId.isBlank() ? "<not set>" : DiscordConfig.channelId).append('\n');
-        text.append("  interval: ").append(DiscordConfig.pollIntervalSeconds).append("s\n");
         text.append("  relayBotMessages: ").append(DiscordConfig.relayBotMessages)
                 .append(" relayAttachments: ").append(DiscordConfig.relayAttachments)
                 .append(" respondToPlayersCommand: ").append(DiscordConfig.respondToPlayersCommand);
@@ -148,7 +143,7 @@ public final class DiscordCommands
             source.sendFailure(Component.literal(WRITE_FAILED));
             return 0;
         }
-        DiscordBridge.poller().restart();
+        DiscordBridge.botManager().restart();
         source.sendSuccess(() -> Component.literal("Inbound relay set to " + value + ".")
                 .withStyle(ChatFormatting.GREEN), false);
         return Command.SINGLE_SUCCESS;
@@ -175,7 +170,7 @@ public final class DiscordCommands
             source.sendFailure(Component.literal(WRITE_FAILED));
             return 0;
         }
-        DiscordBridge.poller().restart();
+        DiscordBridge.botManager().restart();
         source.sendSuccess(() -> Component.literal("Bot token stored.").withStyle(ChatFormatting.GREEN), false);
         return Command.SINGLE_SUCCESS;
     }
@@ -197,24 +192,8 @@ public final class DiscordCommands
             source.sendFailure(Component.literal(WRITE_FAILED));
             return 0;
         }
-        DiscordBridge.poller().restart();
+        DiscordBridge.botManager().restart();
         source.sendSuccess(() -> Component.literal("Inbound channel set to " + id + ".")
-                .withStyle(ChatFormatting.GREEN), false);
-        return Command.SINGLE_SUCCESS;
-    }
-
-    private static int setInterval(final CommandContext<CommandSourceStack> ctx)
-    {
-        final CommandSourceStack source = ctx.getSource();
-        final int seconds = IntegerArgumentType.getInteger(ctx, "seconds");
-
-        if (!DiscordConfig.setPollIntervalSeconds(seconds))
-        {
-            source.sendFailure(Component.literal(WRITE_FAILED));
-            return 0;
-        }
-        DiscordBridge.poller().restart();
-        source.sendSuccess(() -> Component.literal("Poll interval set to " + seconds + " seconds.")
                 .withStyle(ChatFormatting.GREEN), false);
         return Command.SINGLE_SUCCESS;
     }

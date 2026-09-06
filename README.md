@@ -36,22 +36,21 @@ All commands require operator permission level 4.
 | `/discordbridge inbound enabled <true\|false>` | Turn the inbound relay on or off |
 | `/discordbridge inbound token <token>` | Set the bot token (run this in the console) |
 | `/discordbridge inbound channel <id>` | Set the channel to read from |
-| `/discordbridge inbound interval <seconds>` | Poll interval, 2 to 60 |
+| `/discordbridge inbound status` | View Gateway connection status and configuration |
 
 Everything is also editable in `config/discordbridge-common.toml` and picked up on reload.
 
 ## Discord to Minecraft
 
-Webhooks are outbound only, so relaying the other direction needs a **bot application**
-with its own token. The mod polls the Discord REST API on a background thread and
-broadcasts anything new into chat as `[Discord] <Name> message`.
+Webhooks are outbound only, so relaying the other direction uses a **bot application**
+powered by JDA (Java Discord API). It connects via Discord's **WebSocket Gateway**, appears **Online** with a "Playing Minecraft" status, and relays chat in real-time.
 
 ### Setup
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) > **New Application** > **Bot**, then copy the token.
 2. On the same Bot page, enable **Message Content Intent**. Without it Discord strips the
    message body and everything arrives blank.
-3. Invite the bot to your server with **View Channel** and **Read Message History**.
+3. Invite the bot to your server with the scopes `bot` and `applications.commands`, and permissions **View Channel**, **Send Messages**, and **Read Message History**.
 4. In Discord, enable **Developer Mode** (User Settings > Advanced), right-click the channel
    and choose **Copy Channel ID**.
 5. From the server console:
@@ -62,13 +61,12 @@ broadcasts anything new into chat as `[Discord] <Name> message`.
    discordbridge inbound enabled true
    ```
 
-### `!players`
+### `/players` Slash Command
 
-Typing `!players` in the channel posts the current online player list back to Discord:
-
-```
-**2/20 online:** Alice, Bob
-```
+The bot registers an official Discord **`/players`** slash command:
+- Shows `**2/20 online:** Alice, Bob`
+- Registered directly to your guild for instant availability in Discord.
+- Typing `!players` as regular text is also supported.
 
 Turn it off with `respondToPlayersCommand = false` in the config.
 

@@ -108,10 +108,6 @@ public final class DiscordConfig
             .comment("Channel to read from. Enable Developer Mode in Discord, then right-click the channel > Copy Channel ID.")
             .define("channelId", "");
 
-    private static final ForgeConfigSpec.IntValue POLL_INTERVAL_SECONDS = BUILDER
-            .comment("How often to check the channel for new messages.")
-            .defineInRange("pollIntervalSeconds", 5, 2, 60);
-
     private static final ForgeConfigSpec.IntValue MAX_RELAYED_LENGTH = BUILDER
             .comment("Relayed Discord messages longer than this are truncated.")
             .defineInRange("maxRelayedLength", 256, 16, 512);
@@ -154,7 +150,6 @@ public final class DiscordConfig
     public static boolean inboundEnabled = false;
     public static String botToken = "";
     public static String channelId = "";
-    public static int pollIntervalSeconds = 5;
     public static int maxRelayedLength = 256;
     public static boolean relayBotMessages = false;
     public static boolean relayAttachments = true;
@@ -193,7 +188,6 @@ public final class DiscordConfig
         inboundEnabled = INBOUND_ENABLED.get();
         botToken = safe(BOT_TOKEN.get());
         channelId = safe(CHANNEL_ID.get());
-        pollIntervalSeconds = POLL_INTERVAL_SECONDS.get();
         maxRelayedLength = MAX_RELAYED_LENGTH.get();
         relayBotMessages = RELAY_BOT_MESSAGES.get();
         relayAttachments = RELAY_ATTACHMENTS.get();
@@ -291,11 +285,6 @@ public final class DiscordConfig
     public static boolean setChannelId(final String value)
     {
         return apply(() -> CHANNEL_ID.set(safe(value)));
-    }
-
-    public static boolean setPollIntervalSeconds(final int value)
-    {
-        return apply(() -> POLL_INTERVAL_SECONDS.set(value));
     }
 
     private static boolean apply(final Runnable mutation)
