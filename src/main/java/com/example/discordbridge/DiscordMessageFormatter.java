@@ -72,7 +72,8 @@ final class DiscordMessageFormatter
 
     static Component toChatComponent(final String author, final String content)
     {
-        return Component.literal(author).withStyle(ChatFormatting.AQUA)
+        return Component.literal("[DC] ").withStyle(ChatFormatting.AQUA)
+                .append(Component.literal(author).withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(": " + content).withStyle(ChatFormatting.WHITE));
     }
 

@@ -11,6 +11,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.time.Instant;
+import java.util.concurrent.ThreadLocalRandom;
 import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -30,6 +31,12 @@ import java.util.Locale;
 @Mod.EventBusSubscriber(modid = DiscordBridge.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ServerEventHandler
 {
+    private static final ChatFormatting[] PLUS_COLORS = {
+            ChatFormatting.RED,
+            ChatFormatting.GREEN,
+            ChatFormatting.AQUA
+    };
+
     private ServerEventHandler()
     {
     }
@@ -133,8 +140,12 @@ public final class ServerEventHandler
 
         event.setCanceled(true);
 
-        final Component line = Component.literal(player.getGameProfile().getName())
-                .withStyle(ChatFormatting.GOLD)
+        final ChatFormatting plusColor = PLUS_COLORS[ThreadLocalRandom.current().nextInt(PLUS_COLORS.length)];
+
+        final Component line = Component.literal("[MVP").withStyle(ChatFormatting.GOLD)
+                .append(Component.literal("++").withStyle(plusColor))
+                .append(Component.literal("] ").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(player.getGameProfile().getName()).withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(": " + text).withStyle(ChatFormatting.WHITE));
 
         final MinecraftServer server = player.getServer();
