@@ -7,6 +7,9 @@ import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -24,6 +27,7 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final char SECTION_SIGN = '\u00A7';
     private static final String PLAYERS_COMMAND = "players";
     private static final String CLEAR_CHAT_COMMAND = "clearchat";
+    private static final String STATS_COMMAND = "stats";
     private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
     private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
 
@@ -42,9 +46,11 @@ public final class DiscordEventListener extends ListenerAdapter
         // Register slash commands globally
         event.getJDA().updateCommands().addCommands(
                 Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft"),
-                Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel")
+                Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel"),
+                Commands.slash(STATS_COMMAND, "Shows server player statistics and leaderboards")
+                        .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false)
         ).queue(
-                success -> LOGGER.info("Registered global slash commands (/players, /clearchat)."),
+                success -> LOGGER.info("Registered global slash commands (/players, /clearchat, /stats)."),
                 error -> LOGGER.warn("Could not register global slash commands: {}", error.getMessage())
         );
 
@@ -62,6 +68,13 @@ public final class DiscordEventListener extends ListenerAdapter
                         success -> LOGGER.info("Registered /clearchat slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /clearchat command: {}", error.getMessage())
                 );
+                channel.getGuild().upsertCommand(
+                        Commands.slash(STATS_COMMAND, "Shows server player statistics and leaderboards")
+                                .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false)
+                ).queue(
+                        success -> LOGGER.info("Registered /stats slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /stats command: {}", error.getMessage())
+                );
             }
         }
     }
@@ -72,6 +85,11 @@ public final class DiscordEventListener extends ListenerAdapter
         if (CLEAR_CHAT_COMMAND.equals(event.getName()))
         {
             handleClearChatCommand(event);
+            return;
+        }
+        if (STATS_COMMAND.equals(event.getName()))
+        {
+            handleStatsCommand(event);
             return;
         }
         if (!PLAYERS_COMMAND.equals(event.getName()))
@@ -145,6 +163,14 @@ public final class DiscordEventListener extends ListenerAdapter
         if ("!clearchat".equalsIgnoreCase(raw))
         {
             handleTextClearChat(event);
+            return;
+        }
+        if ("!stats".equalsIgnoreCase(raw) || raw.toLowerCase().startsWith("!stats "))
+        {
+            if (DiscordConfig.respondToStatsCommand)
+            {
+                respondToTextStats(event, raw);
+            }
             return;
         }
 
@@ -281,6 +307,72 @@ public final class DiscordEventListener extends ListenerAdapter
                             hook.editOriginal(":x: Failed to retrieve messages: " + error.getMessage()).queue();
                         }
                 ));
+    }
+
+    private void handleStatsCommand(final SlashCommandInteractionEvent event)
+    {
+        if (!DiscordConfig.respondToStatsCommand)
+        {
+            event.reply("The /stats command is currently disabled.").setEphemeral(true).queue();
+            return;
+        }
+
+        final OptionMapping playerOption = event.getOption("player");
+        final String targetPlayer = playerOption != null ? playerOption.getAsString().trim() : null;
+
+        event.deferReply().queue(hook -> {
+            final MinecraftServer mc = server;
+            if (mc == null)
+            {
+                hook.sendMessage("Server is not available.").queue();
+                return;
+            }
+            mc.execute(() -> {
+                // Flush online player stats for fresh calculations
+                for (final ServerPlayer p : mc.getPlayerList().getPlayers())
+                {
+                    try
+                    {
+                        p.getStats().save();
+                    }
+                    catch (final Exception ignored)
+                    {
+                    }
+                }
+                final MessageEmbed embed = (targetPlayer == null || targetPlayer.isEmpty())
+                        ? PlayerStatsService.buildLeaderboardsEmbed(mc)
+                        : PlayerStatsService.buildPlayerStatsEmbed(mc, targetPlayer);
+                hook.sendMessageEmbeds(embed).queue();
+            });
+        });
+    }
+
+    private void respondToTextStats(final MessageReceivedEvent event, final String raw)
+    {
+        final MinecraftServer mc = server;
+        if (mc == null)
+        {
+            return;
+        }
+        final String[] parts = raw.split("\\s+", 2);
+        final String targetPlayer = parts.length > 1 ? parts[1].trim() : null;
+
+        mc.execute(() -> {
+            for (final ServerPlayer p : mc.getPlayerList().getPlayers())
+            {
+                try
+                {
+                    p.getStats().save();
+                }
+                catch (final Exception ignored)
+                {
+                }
+            }
+            final MessageEmbed embed = (targetPlayer == null || targetPlayer.isEmpty())
+                    ? PlayerStatsService.buildLeaderboardsEmbed(mc)
+                    : PlayerStatsService.buildPlayerStatsEmbed(mc, targetPlayer);
+            event.getChannel().sendMessageEmbeds(embed).queue();
+        });
     }
 
     private void respondToTextPlayers(final MessageReceivedEvent event)

@@ -122,7 +122,8 @@ public final class DiscordCommands
                 .append(DiscordConfig.channelId.isBlank() ? "<not set>" : DiscordConfig.channelId).append('\n');
         text.append("  relayBotMessages: ").append(DiscordConfig.relayBotMessages)
                 .append(" relayAttachments: ").append(DiscordConfig.relayAttachments)
-                .append(" respondToPlayersCommand: ").append(DiscordConfig.respondToPlayersCommand);
+                .append(" respondToPlayersCommand: ").append(DiscordConfig.respondToPlayersCommand)
+                .append(" respondToStatsCommand: ").append(DiscordConfig.respondToStatsCommand);
 
         source.sendSuccess(() -> Component.literal(text.toString()).withStyle(ChatFormatting.GRAY), false);
         return Command.SINGLE_SUCCESS;

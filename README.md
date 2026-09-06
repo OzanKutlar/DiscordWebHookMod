@@ -61,14 +61,16 @@ powered by JDA (Java Discord API). It connects via Discord's **WebSocket Gateway
    discordbridge inbound enabled true
    ```
 
-### `/players` Slash Command
+### Discord Slash Commands
 
-The bot registers an official Discord **`/players`** slash command:
-- Shows `**2/20 online:** Alice, Bob`
-- Registered directly to your guild for instant availability in Discord.
-- Typing `!players` as regular text is also supported.
+The bot registers official Discord slash commands directly to your guild for instant availability:
 
-Turn it off with `respondToPlayersCommand = false` in the config.
+- **`/players`** (or `!players` text): Shows online player count and player list.
+- **`/stats`** (or `!stats` text): Shows server leaderboards (Most Mobs Killed, Most Blocks Mined, Most Time Played, Most Blocks Walked, Most Achievements) and live Current Health and EXP of online players.
+- **`/stats player:<name>`** (or `!stats <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
+- **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).
+
+Turn commands off with `respondToPlayersCommand = false` or `respondToStatsCommand = false` in the config.
 
 ### How the echo loop is prevented
 

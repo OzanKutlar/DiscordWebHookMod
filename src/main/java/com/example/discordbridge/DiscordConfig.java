@@ -138,6 +138,10 @@ public final class DiscordConfig
             .comment("Answer '!players' in the Discord channel with the current online player list.")
             .define("respondToPlayersCommand", true);
 
+    private static final ForgeConfigSpec.BooleanValue RESPOND_TO_STATS_COMMAND = BUILDER
+            .comment("Answer '/stats' in the Discord channel with player statistics and leaderboards.")
+            .define("respondToStatsCommand", true);
+
     static
     {
         BUILDER.pop();
@@ -169,6 +173,7 @@ public final class DiscordConfig
     public static boolean relayBotMessages = false;
     public static boolean relayAttachments = true;
     public static boolean respondToPlayersCommand = true;
+    public static boolean respondToStatsCommand = true;
 
     private DiscordConfig()
     {
@@ -210,6 +215,7 @@ public final class DiscordConfig
         relayBotMessages = RELAY_BOT_MESSAGES.get();
         relayAttachments = RELAY_ATTACHMENTS.get();
         respondToPlayersCommand = RESPOND_TO_PLAYERS_COMMAND.get();
+        respondToStatsCommand = RESPOND_TO_STATS_COMMAND.get();
     }
 
     private static String safe(final String value)
