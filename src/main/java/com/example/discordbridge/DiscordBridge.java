@@ -23,6 +23,7 @@ public class DiscordBridge
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final DiscordWebhookSender SENDER = new DiscordWebhookSender();
+    private static final DiscordMessagePoller POLLER = new DiscordMessagePoller();
 
     public DiscordBridge(FMLJavaModLoadingContext context)
     {
@@ -40,17 +41,27 @@ public class DiscordBridge
         return SENDER;
     }
 
+    /**
+     * @return the shared inbound poller. Idle unless the inbound relay is configured and enabled.
+     */
+    public static DiscordMessagePoller poller()
+    {
+        return POLLER;
+    }
+
     @SubscribeEvent
     public void onServerStarted(final ServerStartedEvent event)
     {
         SENDER.start();
-        LOGGER.info("Discord Bridge ready (enabled={}, webhook configured={})",
-                DiscordConfig.enabled, !DiscordConfig.webhookUrl.isBlank());
+        POLLER.start(event.getServer());
+        LOGGER.info("Discord Bridge ready (enabled={}, webhook configured={}, inbound={})",
+                DiscordConfig.enabled, !DiscordConfig.webhookUrl.isBlank(), DiscordConfig.inboundEnabled);
     }
 
     @SubscribeEvent
     public void onServerStopping(final ServerStoppingEvent event)
     {
+        POLLER.stop();
         SENDER.stop();
     }
 }

@@ -79,6 +79,54 @@ public final class DiscordConfig
                      "Useful for pointing at https://webhook.site while testing. Keep it off otherwise.")
             .define("allowCustomWebhookHost", false);
 
+    static
+    {
+        BUILDER.comment("Discord -> Minecraft relay. Requires a bot application, not just a webhook.")
+                .push("inbound");
+    }
+
+    private static final ForgeConfigSpec.BooleanValue INBOUND_ENABLED = BUILDER
+            .comment("Relay messages from a Discord channel into Minecraft chat.",
+                     "Requires botToken and channelId to be set first.")
+            .define("inboundEnabled", false);
+
+    private static final ForgeConfigSpec.ConfigValue<String> BOT_TOKEN = BUILDER
+            .comment("Discord bot token. This is a stronger secret than the webhook URL:",
+                     "it lets the holder act as the bot in every server the bot has joined.",
+                     "It is never printed by any command and never written to the log.")
+            .define("botToken", "");
+
+    private static final ForgeConfigSpec.ConfigValue<String> CHANNEL_ID = BUILDER
+            .comment("Channel to read from. Enable Developer Mode in Discord, then right-click the channel > Copy Channel ID.")
+            .define("channelId", "");
+
+    private static final ForgeConfigSpec.IntValue POLL_INTERVAL_SECONDS = BUILDER
+            .comment("How often to check the channel for new messages.")
+            .defineInRange("pollIntervalSeconds", 5, 2, 60);
+
+    private static final ForgeConfigSpec.IntValue MAX_RELAYED_LENGTH = BUILDER
+            .comment("Relayed Discord messages longer than this are truncated.")
+            .defineInRange("maxRelayedLength", 256, 16, 512);
+
+    private static final ForgeConfigSpec.BooleanValue RELAY_BOT_MESSAGES = BUILDER
+            .comment("Relay messages posted by bots and webhooks.",
+                     "Keep this OFF: this mod's own outbound webhook posts are webhook messages,",
+                     "so turning it on makes the bridge echo itself in a loop.")
+            .define("relayBotMessages", false);
+
+    private static final ForgeConfigSpec.BooleanValue RELAY_ATTACHMENTS = BUILDER
+            .comment("Append an (attachment) marker for image and file posts.")
+            .define("relayAttachments", true);
+
+    private static final ForgeConfigSpec.BooleanValue RESPOND_TO_PLAYERS_COMMAND = BUILDER
+            .comment("Answer '!players' in the Discord channel with the current online player list.")
+            .define("respondToPlayersCommand", true);
+
+    static
+    {
+        BUILDER.pop();
+    }
+
     public static final ForgeConfigSpec SPEC = BUILDER.build();
 
     public static boolean enabled = true;
@@ -93,6 +141,14 @@ public final class DiscordConfig
     public static boolean suppressMentions = false;
     public static boolean maskUrlInStatus = false;
     public static boolean allowCustomWebhookHost = false;
+    public static boolean inboundEnabled = false;
+    public static String botToken = "";
+    public static String channelId = "";
+    public static int pollIntervalSeconds = 5;
+    public static int maxRelayedLength = 256;
+    public static boolean relayBotMessages = false;
+    public static boolean relayAttachments = true;
+    public static boolean respondToPlayersCommand = true;
 
     private DiscordConfig()
     {
@@ -122,6 +178,14 @@ public final class DiscordConfig
         suppressMentions = SUPPRESS_MENTIONS.get();
         maskUrlInStatus = MASK_URL_IN_STATUS.get();
         allowCustomWebhookHost = ALLOW_CUSTOM_WEBHOOK_HOST.get();
+        inboundEnabled = INBOUND_ENABLED.get();
+        botToken = safe(BOT_TOKEN.get());
+        channelId = safe(CHANNEL_ID.get());
+        pollIntervalSeconds = POLL_INTERVAL_SECONDS.get();
+        maxRelayedLength = MAX_RELAYED_LENGTH.get();
+        relayBotMessages = RELAY_BOT_MESSAGES.get();
+        relayAttachments = RELAY_ATTACHMENTS.get();
+        respondToPlayersCommand = RESPOND_TO_PLAYERS_COMMAND.get();
     }
 
     private static String safe(final String value)
@@ -192,6 +256,26 @@ public final class DiscordConfig
     public static boolean setAllowCustomWebhookHost(final boolean value)
     {
         return apply(() -> ALLOW_CUSTOM_WEBHOOK_HOST.set(value));
+    }
+
+    public static boolean setInboundEnabled(final boolean value)
+    {
+        return apply(() -> INBOUND_ENABLED.set(value));
+    }
+
+    public static boolean setBotToken(final String value)
+    {
+        return apply(() -> BOT_TOKEN.set(safe(value)));
+    }
+
+    public static boolean setChannelId(final String value)
+    {
+        return apply(() -> CHANNEL_ID.set(safe(value)));
+    }
+
+    public static boolean setPollIntervalSeconds(final int value)
+    {
+        return apply(() -> POLL_INTERVAL_SECONDS.set(value));
     }
 
     private static boolean apply(final Runnable mutation)
@@ -268,6 +352,38 @@ public final class DiscordConfig
             return webhookUrl;
         }
         return mask(webhookUrl);
+    }
+
+    /**
+     * @return true if the inbound relay has everything it needs to run.
+     */
+    public static boolean isInboundConfigured()
+    {
+        return !botToken.isBlank() && isValidChannelId(channelId);
+    }
+
+    /**
+     * Discord snowflakes are decimal ids, currently 17 to 20 digits long.
+     */
+    public static boolean isValidChannelId(final String value)
+    {
+        if (value == null)
+        {
+            return false;
+        }
+        final String trimmed = value.trim();
+        if (trimmed.length() < 17 || trimmed.length() > 20)
+        {
+            return false;
+        }
+        for (int i = 0; i < trimmed.length(); i++)
+        {
+            if (!Character.isDigit(trimmed.charAt(i)))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String mask(final String url)

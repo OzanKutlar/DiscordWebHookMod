@@ -2,6 +2,7 @@ package com.example.discordbridge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -79,7 +80,8 @@ public final class DiscordCommands
                                 .then(Commands.argument("value", BoolArgumentType.bool())
                                         .executes(ctx -> toggle(ctx, "Custom webhook hosts",
                                                 () -> DiscordConfig.setAllowCustomWebhookHost(
-                                                        BoolArgumentType.getBool(ctx, "value")))))));
+                                                        BoolArgumentType.getBool(ctx, "value")))))))
+                .then(inbound());
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> eventToggle(final String key)
@@ -88,6 +90,131 @@ public final class DiscordCommands
                 .then(Commands.argument("value", BoolArgumentType.bool())
                         .executes(ctx -> toggle(ctx, "Relay for " + key,
                                 () -> DiscordConfig.setAnnounce(key, BoolArgumentType.getBool(ctx, "value")))));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> inbound()
+    {
+        return Commands.literal("inbound")
+                .then(Commands.literal("status").executes(DiscordCommands::inboundStatus))
+                .then(Commands.literal("enabled")
+                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                .executes(DiscordCommands::setInboundEnabled)))
+                .then(Commands.literal("token")
+                        .then(Commands.argument("token", StringArgumentType.greedyString())
+                                .executes(DiscordCommands::setBotToken)))
+                .then(Commands.literal("channel")
+                        .then(Commands.argument("id", StringArgumentType.word())
+                                .executes(DiscordCommands::setChannel)))
+                .then(Commands.literal("interval")
+                        .then(Commands.argument("seconds", IntegerArgumentType.integer(2, 60))
+                                .executes(DiscordCommands::setInterval)));
+    }
+
+    private static int inboundStatus(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final StringBuilder text = new StringBuilder(192);
+        text.append("Discord Bridge inbound relay\n");
+        text.append("  enabled: ").append(DiscordConfig.inboundEnabled).append('\n');
+        // The token is a secret and is never printed, only its presence.
+        text.append("  token: ").append(DiscordConfig.botToken.isBlank() ? "not set" : "set").append('\n');
+        text.append("  channel: ")
+                .append(DiscordConfig.channelId.isBlank() ? "<not set>" : DiscordConfig.channelId).append('\n');
+        text.append("  interval: ").append(DiscordConfig.pollIntervalSeconds).append("s\n");
+        text.append("  relayBotMessages: ").append(DiscordConfig.relayBotMessages)
+                .append(" relayAttachments: ").append(DiscordConfig.relayAttachments)
+                .append(" respondToPlayersCommand: ").append(DiscordConfig.respondToPlayersCommand);
+
+        source.sendSuccess(() -> Component.literal(text.toString()).withStyle(ChatFormatting.GRAY), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int setInboundEnabled(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final boolean value = BoolArgumentType.getBool(ctx, "value");
+
+        if (value && !DiscordConfig.isInboundConfigured())
+        {
+            source.sendFailure(Component.literal(
+                    "Set a bot token and a channel id first: /discordbridge inbound token <token> "
+                            + "and /discordbridge inbound channel <id>."));
+            return 0;
+        }
+        if (!DiscordConfig.setInboundEnabled(value))
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        DiscordBridge.poller().restart();
+        source.sendSuccess(() -> Component.literal("Inbound relay set to " + value + ".")
+                .withStyle(ChatFormatting.GREEN), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int setBotToken(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final String token = StringArgumentType.getString(ctx, "token").trim();
+
+        if (token.length() < 20)
+        {
+            source.sendFailure(Component.literal("That does not look like a bot token."));
+            return 0;
+        }
+        if (source.getEntity() != null)
+        {
+            source.sendFailure(Component.literal(
+                    "Warning: you ran this in game, so the token is now sitting in your chat log. "
+                            + "Prefer the server console. Rotate the token in the Developer Portal if anyone saw it."));
+        }
+        if (!DiscordConfig.setBotToken(token))
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        DiscordBridge.poller().restart();
+        source.sendSuccess(() -> Component.literal("Bot token stored.").withStyle(ChatFormatting.GREEN), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int setChannel(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final String id = StringArgumentType.getString(ctx, "id").trim();
+
+        if (!DiscordConfig.isValidChannelId(id))
+        {
+            source.sendFailure(Component.literal(
+                    "That is not a channel id. Enable Developer Mode in Discord, then right-click the channel "
+                            + "and choose Copy Channel ID."));
+            return 0;
+        }
+        if (!DiscordConfig.setChannelId(id))
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        DiscordBridge.poller().restart();
+        source.sendSuccess(() -> Component.literal("Inbound channel set to " + id + ".")
+                .withStyle(ChatFormatting.GREEN), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int setInterval(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final int seconds = IntegerArgumentType.getInteger(ctx, "seconds");
+
+        if (!DiscordConfig.setPollIntervalSeconds(seconds))
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        DiscordBridge.poller().restart();
+        source.sendSuccess(() -> Component.literal("Poll interval set to " + seconds + " seconds.")
+                .withStyle(ChatFormatting.GREEN), false);
+        return Command.SINGLE_SUCCESS;
     }
 
     private static int status(final CommandContext<CommandSourceStack> ctx)

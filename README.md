@@ -32,10 +32,75 @@ All commands require operator permission level 4.
 | `/discordbridge avatar <url>` | Set the avatar image (empty to clear) |
 | `/discordbridge events join\|leave\|chat\|death <true\|false>` | Toggle an individual relay |
 | `/discordbridge safety <option> <true\|false>` | Toggle a hardening option (see below) |
+| `/discordbridge inbound status` | Show the Discord to Minecraft relay settings |
+| `/discordbridge inbound enabled <true\|false>` | Turn the inbound relay on or off |
+| `/discordbridge inbound token <token>` | Set the bot token (run this in the console) |
+| `/discordbridge inbound channel <id>` | Set the channel to read from |
+| `/discordbridge inbound interval <seconds>` | Poll interval, 2 to 60 |
 
 Everything is also editable in `config/discordbridge-common.toml` and picked up on reload.
 
+## Discord to Minecraft
+
+Webhooks are outbound only, so relaying the other direction needs a **bot application**
+with its own token. The mod polls the Discord REST API on a background thread and
+broadcasts anything new into chat as `[Discord] <Name> message`.
+
+### Setup
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) > **New Application** > **Bot**, then copy the token.
+2. On the same Bot page, enable **Message Content Intent**. Without it Discord strips the
+   message body and everything arrives blank.
+3. Invite the bot to your server with **View Channel** and **Read Message History**.
+4. In Discord, enable **Developer Mode** (User Settings > Advanced), right-click the channel
+   and choose **Copy Channel ID**.
+5. From the server console:
+
+   ```
+   discordbridge inbound token <bot token>
+   discordbridge inbound channel <channel id>
+   discordbridge inbound enabled true
+   ```
+
+### `!players`
+
+Typing `!players` in the channel posts the current online player list back to Discord:
+
+```
+**2/20 online:** Alice, Bob
+```
+
+Turn it off with `respondToPlayersCommand = false` in the config.
+
+### How the echo loop is prevented
+
+Your outbound webhook posts appear in the same channel the bot reads. Messages carrying a
+`webhook_id`, and messages from bots, are skipped — that is what stops the bridge feeding
+itself forever. `relayBotMessages` exists to override this, and should stay `false`.
+
+### Other behaviour worth knowing
+
+- The **first poll after startup only records the newest message id and discards it**, so
+  restarting the server never replays the channel backlog into chat.
+- A bad token or a missing channel logs one error and **stops polling** rather than retrying
+  every few seconds forever. Fix the setting and run `discordbridge inbound enabled true`.
+- Rate limits (`429`) are honoured via `retry_after`; other errors back off up to 60 seconds.
+- Relayed messages are capped at `maxRelayedLength` (default 256), stripped of section-sign
+  formatting codes, and flattened to a single line. Messages starting with `/` are dropped.
+
 ## Security notes
+
+> [!CAUTION]
+> **Anyone who can type in the linked Discord channel can type into your Minecraft server.**
+> That is the whole point of the inbound relay, but it means the channel is effectively a
+> chat permission on your game server. Keep it private. There is deliberately no way to run
+> Minecraft commands from Discord.
+
+> [!IMPORTANT]
+> **The bot token is a stronger secret than the webhook URL.** A leaked webhook lets someone
+> spam one channel; a leaked bot token lets someone act as the bot in every server it has
+> joined. It lives in the same non-synced `COMMON` config, is never logged, and no command
+> will ever print it — `inbound status` shows only `set` or `not set`.
 
 > [!IMPORTANT]
 > **The webhook URL is a secret.** Anyone who has it can post anything into your channel,
