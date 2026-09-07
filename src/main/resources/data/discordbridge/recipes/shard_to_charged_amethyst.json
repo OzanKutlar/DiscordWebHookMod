@@ -14,7 +14,7 @@
   "energyRequired": 37500,
   "fluidInput": {
     "amount": 1000,
-    "tag": "forge:water"
+    "tag": "minecraft:water"
   },
   "gasInput": {
     "amount": 100,
