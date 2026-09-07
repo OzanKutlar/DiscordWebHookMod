@@ -167,6 +167,49 @@ Turn it back off when you're done.
 - Colour codes are always stripped and content is always truncated to 1900 characters,
   since Discord rejects anything over 2000.
 
+## Amethyst transmutation recipes
+
+Alongside the chat bridge, the mod ships two cross-mod recipes that convert Hex
+Casting amethyst dust into charged amethyst using Mekanism machinery.
+
+| Step | Machine | Input | Output |
+| --- | --- | --- | --- |
+| 1 | Enrichment Chamber | 2x amethyst dust | 1x amethyst shard |
+| 2 | Pressurized Reaction Chamber | 1x amethyst shard, 1000mB water, 100mB hydrogen, 37,500 J | 1x charged amethyst |
+
+The recipes live in `src/main/resources/data/discordbridge/recipes/` and are
+plain data pack JSON, so they can be edited without touching any Java. They are
+registered under this mod's own `discordbridge` namespace rather than Mekanism's,
+so there is no risk of overwriting a stock recipe.
+
+> [!NOTE]
+> Both recipes carry `forge:mod_loaded` conditions for `mekanism` and
+> `hexcasting`. Forge evaluates these before the recipe reaches Mekanism's
+> deserializer, so a server missing either mod drops the recipes silently
+> instead of logging a parse error. The mod itself still loads and relays chat
+> normally with neither mod present.
+
+> [!IMPORTANT]
+> `energyRequired` is measured in **Joules**, not FE. The 37,500 J figure
+> assumes Mekanism's default 2.5 J per FE conversion, which works out to
+> 15,000 FE. If `config/mekanism.toml` overrides that ratio, the effective
+> cost scales with it.
+
+> [!WARNING]
+> These ratios form a closed loop. Charged amethyst decomposes back into 10
+> amethyst dust, so a full cycle returns more dust than it consumed. This is
+> intentional and is priced through the reaction chamber's energy cost, but it
+> does mean amethyst is effectively unbounded given sufficient power. Raise
+> `energyRequired` in `shard_to_charged_amethyst.json`, or raise the input
+> `amount` in `amethyst_dust_to_shard.json`, if you want the loop to be
+> break-even or lossy.
+
+### Changing or removing the recipes
+
+Edit the JSON files and rebuild, or delete them to drop the feature entirely.
+If you delete both, the optional `mekanism` and `hexcasting` dependency blocks
+in `META-INF/mods.toml` can go too.
+
 ## Building
 
 ```bash

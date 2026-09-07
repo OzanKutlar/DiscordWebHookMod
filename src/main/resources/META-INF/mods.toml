@@ -25,3 +25,23 @@ description='''${mod_description}'''
     versionRange="${minecraft_version_range}"
     ordering="NONE"
     side="BOTH"
+
+# Optional. The mod ships Mekanism recipes under data/discordbridge/recipes/.
+# AFTER ordering guarantees Mekanism's recipe serializers exist before our
+# data pack is parsed. Not mandatory: the recipes carry forge:mod_loaded
+# conditions and are dropped silently when Mekanism is absent.
+[[dependencies.${mod_id}]]
+    modId="mekanism"
+    mandatory=false
+    versionRange="[10.4.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Optional. Supplies the amethyst dust and charged amethyst items used by the
+# transmutation recipes. Same conditional handling as above.
+[[dependencies.${mod_id}]]
+    modId="hexcasting"
+    mandatory=false
+    versionRange="[0.11.0,)"
+    ordering="AFTER"
+    side="BOTH"

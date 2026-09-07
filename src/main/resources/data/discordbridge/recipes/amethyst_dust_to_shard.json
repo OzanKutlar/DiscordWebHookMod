@@ -1,0 +1,22 @@
+{
+  "type": "mekanism:enriching",
+  "conditions": [
+    {
+      "type": "forge:mod_loaded",
+      "modid": "mekanism"
+    },
+    {
+      "type": "forge:mod_loaded",
+      "modid": "hexcasting"
+    }
+  ],
+  "input": {
+    "amount": 2,
+    "ingredient": {
+      "item": "hexcasting:amethyst_dust"
+    }
+  },
+  "output": {
+    "item": "minecraft:amethyst_shard"
+  }
+}

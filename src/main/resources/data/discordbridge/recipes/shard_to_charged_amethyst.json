@@ -1,0 +1,31 @@
+{
+  "type": "mekanism:reaction",
+  "conditions": [
+    {
+      "type": "forge:mod_loaded",
+      "modid": "mekanism"
+    },
+    {
+      "type": "forge:mod_loaded",
+      "modid": "hexcasting"
+    }
+  ],
+  "duration": 300,
+  "energyRequired": 37500,
+  "fluidInput": {
+    "amount": 1000,
+    "tag": "forge:water"
+  },
+  "gasInput": {
+    "amount": 100,
+    "gas": "mekanism:hydrogen"
+  },
+  "itemInput": {
+    "ingredient": {
+      "item": "minecraft:amethyst_shard"
+    }
+  },
+  "itemOutput": {
+    "item": "hexcasting:charged_amethyst"
+  }
+}
