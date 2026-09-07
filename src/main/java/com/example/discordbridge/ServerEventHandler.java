@@ -20,6 +20,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Translates the four game events into webhook messages.
@@ -30,8 +31,27 @@ import java.util.Locale;
 @Mod.EventBusSubscriber(modid = DiscordBridge.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ServerEventHandler
 {
+    /**
+     * Commands that are never broadcast in game nor relayed to Discord.
+     *
+     * <p>These are read-only informational commands that players run often; relaying
+     * them would drown out real chat in both places.</p>
+     */
+    private static final Set<String> SILENT_COMMANDS = Set.of("hexparse", "players", "status", "stats");
+
     private ServerEventHandler()
     {
+    }
+
+    /**
+     * @param normalized a lowercased command string with any leading slash removed
+     * @return true if the command's root token is in {@link #SILENT_COMMANDS}
+     */
+    private static boolean isSilentCommand(final String normalized)
+    {
+        final int space = normalized.indexOf(' ');
+        final String root = space < 0 ? normalized : normalized.substring(0, space);
+        return SILENT_COMMANDS.contains(root);
     }
 
     @SubscribeEvent
@@ -268,7 +288,7 @@ public final class ServerEventHandler
         final String trimmed = rawCommand.trim();
         final String lower = trimmed.toLowerCase(Locale.ROOT);
         final String normalized = lower.startsWith("/") ? lower.substring(1) : lower;
-        if (normalized.startsWith("hexparse"))
+        if (isSilentCommand(normalized))
         {
             return;
         }

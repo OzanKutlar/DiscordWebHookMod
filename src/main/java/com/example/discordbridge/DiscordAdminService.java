@@ -129,7 +129,7 @@ public final class DiscordAdminService
             try
             {
                 final String cleanCmd = command.startsWith("/") ? command.substring(1) : command;
-                LOGGER.info("Executing command from Discord Admin: /{score}", cleanCmd);
+                LOGGER.info("Executing command from Discord Admin: /{}", cleanCmd);
                 server.getCommands().performPrefixedCommand(sourceStack, cleanCmd);
             }
             catch (final Exception e)
@@ -183,7 +183,12 @@ public final class DiscordAdminService
         });
     }
 
-    private static String formatUptime(final long ms)
+    /**
+     * Formats a millisecond uptime as a compact human-readable duration.
+     *
+     * <p>Public so the in-game {@code /status} table renders it identically.</p>
+     */
+    public static String formatUptime(final long ms)
     {
         final long seconds = ms / 1000;
         final long days = seconds / 86400;

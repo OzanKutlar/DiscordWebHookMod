@@ -15,9 +15,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 /**
  * Handles incoming Discord gateway events (messages and slash commands).
  */
@@ -147,23 +144,10 @@ public final class DiscordEventListener extends ListenerAdapter
                 hook.sendMessage("Server is not available.").queue();
                 return;
             }
+            // Health and experience are live entity state, so read them on the server thread.
             mc.execute(() -> {
-                final List<ServerPlayer> players = mc.getPlayerList().getPlayers();
-                final String reply;
-                if (players.isEmpty())
-                {
-                    reply = "Nobody is online right now.";
-                }
-                else
-                {
-                    final String names = players.stream()
-                            .map(p -> p.getGameProfile().getName())
-                            .sorted(String.CASE_INSENSITIVE_ORDER)
-                            .collect(Collectors.joining(", "));
-                    reply = "**" + players.size() + "/" + mc.getPlayerList().getMaxPlayers()
-                            + " online:** " + names;
-                }
-                hook.sendMessage(reply).queue();
+                final MessageEmbed embed = PlayerListService.buildPlayersEmbed(mc);
+                hook.sendMessageEmbeds(embed).queue();
             });
         });
     }
@@ -535,22 +519,8 @@ public final class DiscordEventListener extends ListenerAdapter
             return;
         }
         mc.execute(() -> {
-            final List<ServerPlayer> players = mc.getPlayerList().getPlayers();
-            final String text;
-            if (players.isEmpty())
-            {
-                text = "Nobody is online right now.";
-            }
-            else
-            {
-                final String names = players.stream()
-                        .map(p -> p.getGameProfile().getName())
-                        .sorted(String.CASE_INSENSITIVE_ORDER)
-                        .collect(Collectors.joining(", "));
-                text = "**" + players.size() + "/" + mc.getPlayerList().getMaxPlayers()
-                        + " online:** " + names;
-            }
-            event.getChannel().sendMessage(text).queue();
+            final MessageEmbed embed = PlayerListService.buildPlayersEmbed(mc);
+            event.getChannel().sendMessageEmbeds(embed).queue();
         });
     }
 

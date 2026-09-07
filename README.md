@@ -40,6 +40,27 @@ All commands require operator permission level 4.
 
 Everything is also editable in `config/discordbridge-common.toml` and picked up on reload.
 
+### In-game commands
+
+These mirror the read-only Discord commands. They are available to **all players**
+(permission level 0) and reply only to whoever ran them, so nothing is broadcast to
+other players or relayed to Discord.
+
+| Command | What it does |
+| --- | --- |
+| `/players` | Table of everyone online with health, experience level and ping |
+| `/status` | Table of TPS, tick time, RAM and uptime |
+| `/stats` | Leaderboard table: kills, blocks mined, play time, distance, advancements |
+| `/stats <player>` | Table of one player's lifetime statistics |
+
+Output is drawn with box characters. Minecraft's default font is not monospaced, so
+columns are padded by character count and will line up closely rather than exactly.
+
+> [!NOTE]
+> `/restart` and `/cmd` are deliberately **not** available in game. Vanilla already
+> provides `/stop`, and an in-game command that executes console commands at operator
+> level 4 would be a permission escalation. Both stay restricted to the Discord owner.
+
 ## Discord to Minecraft
 
 Webhooks are outbound only, so relaying the other direction uses a **bot application**
@@ -65,7 +86,7 @@ powered by JDA (Java Discord API). It connects via Discord's **WebSocket Gateway
 
 The bot registers official Discord slash commands directly to your guild for instant availability:
 
-- **`/players`** (or `!players` text): Shows online player count and player list.
+- **`/players`** (or `!players` text): Rich embed listing everyone online with their current health and experience level, plus the online count in the footer.
 - **`/stats`** (or `!stats` text): Shows server leaderboards (Most Mobs Killed, Most Blocks Mined, Most Time Played, Most Blocks Walked, Most Achievements) and live Current Health and EXP of online players.
 - **`/stats player:<name>`** (or `!stats <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
 - **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).

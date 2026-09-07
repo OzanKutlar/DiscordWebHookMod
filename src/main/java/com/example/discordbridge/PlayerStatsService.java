@@ -44,11 +44,51 @@ public final class PlayerStatsService
     }
 
     /**
+     * Reads every recorded player's statistics from the world save.
+     *
+     * <p>Shared by the Discord embeds and the in-game {@code /stats} table so
+     * the two can never disagree.</p>
+     *
+     * @return a map keyed by player UUID, empty if the stats directory is missing
+     */
+    public static Map<UUID, PlayerStatsRecord> collectAllStats(final MinecraftServer server)
+    {
+        if (server == null)
+        {
+            return Collections.emptyMap();
+        }
+        return loadAllPlayerStats(server);
+    }
+
+    /**
+     * Resolves a player by name and reads their statistics.
+     *
+     * @return the record, or null if the name could not be resolved to a known player
+     */
+    public static PlayerStatsRecord collectStatsFor(final MinecraftServer server, final String targetName)
+    {
+        if (server == null || targetName == null || targetName.isBlank())
+        {
+            return null;
+        }
+        final String trimmed = targetName.trim();
+        final UUID uuid = resolvePlayerUuid(server, trimmed);
+        if (uuid == null)
+        {
+            return null;
+        }
+        final String resolvedName = resolvePlayerName(server, uuid, trimmed);
+        final Path statsDir = server.getWorldPath(LevelResource.PLAYER_STATS_DIR);
+        final Path advDir = server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR);
+        return loadSingleStats(statsDir, advDir, uuid, resolvedName);
+    }
+
+    /**
      * Builds a Discord embed displaying the server-wide leaderboards and current online player health/EXP.
      */
     public static MessageEmbed buildLeaderboardsEmbed(final MinecraftServer server)
     {
-        final Map<UUID, PlayerStatsRecord> allStats = loadAllPlayerStats(server);
+        final Map<UUID, PlayerStatsRecord> allStats = collectAllStats(server);
         final List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
 
         final EmbedBuilder embed = new EmbedBuilder();
@@ -137,8 +177,8 @@ public final class PlayerStatsService
      */
     public static MessageEmbed buildPlayerStatsEmbed(final MinecraftServer server, final String targetName)
     {
-        final UUID uuid = resolvePlayerUuid(server, targetName);
-        if (uuid == null)
+        final PlayerStatsRecord record = collectStatsFor(server, targetName);
+        if (record == null)
         {
             final EmbedBuilder notFound = new EmbedBuilder();
             notFound.setTitle("Player Not Found");
@@ -148,12 +188,9 @@ public final class PlayerStatsService
             return notFound.build();
         }
 
-        final String resolvedName = resolvePlayerName(server, uuid, targetName);
-        final Path statsDir = server.getWorldPath(LevelResource.PLAYER_STATS_DIR);
-        final Path advDir = server.getWorldPath(LevelResource.PLAYER_ADVANCEMENTS_DIR);
-        final PlayerStatsRecord record = loadSingleStats(statsDir, advDir, uuid, resolvedName);
+        final String resolvedName = record.name;
 
-        final ServerPlayer onlinePlayer = server.getPlayerList().getPlayer(uuid);
+        final ServerPlayer onlinePlayer = server.getPlayerList().getPlayer(record.uuid);
         final boolean isOnline = onlinePlayer != null;
         final NumberFormat fmt = NumberFormat.getNumberInstance(Locale.US);
 
