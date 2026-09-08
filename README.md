@@ -32,6 +32,11 @@ All commands require operator permission level 4.
 | `/discordbridge avatar <url>` | Set the avatar image (empty to clear) |
 | `/discordbridge events join\|leave\|chat\|death\|commands\|advancements <true\|false>` | Toggle an individual relay |
 | `/discordbridge safety <option> <true\|false>` | Toggle a hardening option (see below) |
+| `/discordbridge mentions status` | Show the Minecraft to Discord mention settings |
+| `/discordbridge mentions allow <true\|false>` | Turn `@name` resolution on or off (reconnects the bot) |
+| `/discordbridge mentions everyone <true\|false>` | Allow `@everyone` and `@here` from in game |
+| `/discordbridge mentions max <0-10>` | Maximum mentions resolved per message |
+| `/discordbridge mentions cooldown <0-3600>` | Seconds between one player's pings |
 | `/discordbridge inbound status` | Show the Discord to Minecraft relay settings |
 | `/discordbridge inbound enabled <true\|false>` | Turn the inbound relay on or off |
 | `/discordbridge inbound token <token>` | Set the bot token (run this in the console) |
@@ -50,7 +55,7 @@ other players or relayed to Discord.
 | --- | --- |
 | `/players` | Table of everyone online with health, experience level and ping |
 | `/status` | Table of TPS, tick time, RAM and uptime |
-| `/stats` | Leaderboard table: the leader in each headline statistic |
+| `/stats` | Leaderboard table: the leader in **every** statistic anyone has scored on, grouped |
 | `/stats player <name>` | Table of one player's lifetime statistics |
 | `/stats category <name>` | Full ranked leaderboard for one statistic |
 
@@ -88,13 +93,14 @@ powered by JDA (Java Discord API). It connects via Discord's **WebSocket Gateway
 The bot registers official Discord slash commands directly to your guild for instant availability:
 
 - **`/players`** (or `!players` text): Rich embed listing everyone online with their current health and experience level, plus the online count in the footer.
-- **`/stats overview`** (or `!stats` text): Shows the leader in each headline statistic, plus live Current Health and EXP of online players.
+- **`/stats overview`** (or `!stats` text): Shows the leader in every statistic anyone has scored on, grouped into sections, plus live Current Health and EXP of online players.
 - **`/stats player name:<name>`** (or `!stats player <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
 - **`/stats category name:<category>`** (or `!stats category <category>` text): Full ranked leaderboard for one statistic. The `name` option autocompletes.
 - **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).
 - **`/status`** (or `!status` text): Shows server performance, TPS, RAM usage, and uptime.
 - **`/restart`** (or `!restart` text): Gracefully restarts/stops the Minecraft server (strictly restricted to owner Discord ID `462616453653331968`).
 - **`/cmd <command>`** (or `!cmd <command>` text): Executes any console command with Operator level 4 (`OP`) permissions and returns the output to Discord (strictly restricted to owner Discord ID `462616453653331968`).
+- **`/mentions status|allow|everyone|max|cooldown`**: Reads and changes the Minecraft to Discord mention settings (strictly restricted to the same owner Discord ID). Mirrors `/discordbridge mentions ...` in game, so either side can turn the feature on or off.
 
 Turn commands off with `respondToPlayersCommand = false` or `respondToStatsCommand = false` in the config.
 
@@ -142,6 +148,55 @@ itself forever. `relayBotMessages` exists to override this, and should stay `fal
 - Rate limits (`429`) are honoured via `retry_after`; other errors back off up to 60 seconds.
 - Relayed messages are capped at `maxRelayedLength` (default 256), stripped of section-sign
   formatting codes, and flattened to a single line. Messages starting with `/` are dropped.
+
+## Minecraft to Discord mentions
+
+Players can ping Discord users by typing `@name` in Minecraft chat. All of
+`@Name`, `@First_Last` and `@"First Last"` work, matched case-insensitively
+against nickname, then global name, then username, longest match first. Anything
+that does not resolve is relayed exactly as typed, so `steve@example.com` is
+never mangled. Resolved mentions are highlighted in aqua in game so the player
+can see the ping landed.
+
+The feature ships **disabled**:
+
+```
+discordbridge mentions allow true
+```
+
+> [!CAUTION]
+> **This requires the privileged Server Members Intent.** Enable it at
+> [Developer Portal](https://discord.com/developers/applications) > your
+> application > **Bot** > **Privileged Gateway Intents** > **Server Members
+> Intent**. If `allowMentions` is on and that intent is not granted, Discord
+> rejects the connection and **the whole bridge stops working**, not just
+> mentions. The server log will name the toggle explicitly if this happens.
+> The intent is only requested while the setting is on, so leaving it off keeps
+> the previous behaviour exactly.
+
+> [!WARNING]
+> **This gives every player a way to notify people who are not in the game.**
+> The README already notes that the linked Discord channel is effectively a chat
+> permission on your server; this is the same door in the other direction. The
+> per-message cap and per-player cooldown exist to blunt the obvious abuse, but
+> anyone who can type in game can ping anyone in the guild.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `allowMentions` | `false` | Master switch for `@name` resolution |
+| `allowEveryoneMention` | `false` | Whether `@everyone` and `@here` resolve. Gated separately because it is much noisier |
+| `maxMentionsPerMessage` | `3` | Mentions past this count stay plain text |
+| `mentionCooldownSeconds` | `10` | Minimum gap between one player's pings. The message still relays, just without pings. `0` disables |
+
+> [!IMPORTANT]
+> **`suppressMentions` always wins.** If the safety option is on, no ping
+> resolves regardless of `allowMentions`. Two settings that both control pinging
+> could otherwise contradict each other, and the safe one should take priority.
+
+Every webhook payload now carries an explicit `allowed_mentions` whitelist of
+exactly the ids the resolver matched. Discord itself refuses to render anything
+else, so a player typing a raw `<@123456>` into Minecraft chat can no longer
+produce a real ping the way it previously could.
 
 ## Security notes
 

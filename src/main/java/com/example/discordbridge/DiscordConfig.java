@@ -149,6 +149,36 @@ public final class DiscordConfig
     static
     {
         BUILDER.pop();
+        BUILDER.comment("Minecraft -> Discord mentions. Lets players ping Discord users with @name in game.")
+                .push("mentions");
+    }
+
+    private static final ForgeConfigSpec.BooleanValue ALLOW_MENTIONS = BUILDER
+            .comment("Resolve '@name' in Minecraft chat into a real Discord ping.",
+                     "OFF by default. Requires the privileged Server Members Intent:",
+                     "Developer Portal > Bot > Privileged Gateway Intents > Server Members Intent.",
+                     "If that intent is not granted the bot will refuse to connect at all.",
+                     "Note this gives every player on the server a way to notify people who are not playing.")
+            .define("allowMentions", false);
+
+    private static final ForgeConfigSpec.BooleanValue ALLOW_EVERYONE_MENTION = BUILDER
+            .comment("Allow players to trigger @everyone and @here from Minecraft chat.",
+                     "Gated separately from allowMentions because it is far noisier. Keep it off",
+                     "unless you trust everyone who can type in game.")
+            .define("allowEveryoneMention", false);
+
+    private static final ForgeConfigSpec.IntValue MAX_MENTIONS_PER_MESSAGE = BUILDER
+            .comment("Mentions past this count in a single message are left as plain text.")
+            .defineInRange("maxMentionsPerMessage", 3, 0, 10);
+
+    private static final ForgeConfigSpec.IntValue MENTION_COOLDOWN_SECONDS = BUILDER
+            .comment("Minimum seconds between one player's pings. Their message still relays,",
+                     "but with mentions left as plain text. Set 0 to disable the cooldown.")
+            .defineInRange("mentionCooldownSeconds", 10, 0, 3600);
+
+    static
+    {
+        BUILDER.pop();
     }
 
     public static final ForgeConfigSpec SPEC = BUILDER.build();
@@ -179,6 +209,10 @@ public final class DiscordConfig
     public static boolean respondToPlayersCommand = true;
     public static boolean respondToStatsCommand = true;
     public static String ownerDiscordId = "462616453653331968";
+    public static boolean allowMentions = false;
+    public static boolean allowEveryoneMention = false;
+    public static int maxMentionsPerMessage = 3;
+    public static int mentionCooldownSeconds = 10;
 
     private DiscordConfig()
     {
@@ -226,6 +260,10 @@ public final class DiscordConfig
         {
             ownerDiscordId = "462616453653331968";
         }
+        allowMentions = ALLOW_MENTIONS.get();
+        allowEveryoneMention = ALLOW_EVERYONE_MENTION.get();
+        maxMentionsPerMessage = MAX_MENTIONS_PER_MESSAGE.get();
+        mentionCooldownSeconds = MENTION_COOLDOWN_SECONDS.get();
     }
 
     private static String safe(final String value)
@@ -331,6 +369,53 @@ public final class DiscordConfig
     public static boolean setChannelId(final String value)
     {
         return apply(() -> CHANNEL_ID.set(safe(value)));
+    }
+
+    public static boolean setAllowMentions(final boolean value)
+    {
+        return apply(() -> ALLOW_MENTIONS.set(value));
+    }
+
+    public static boolean setAllowEveryoneMention(final boolean value)
+    {
+        return apply(() -> ALLOW_EVERYONE_MENTION.set(value));
+    }
+
+    public static boolean setMaxMentionsPerMessage(final int value)
+    {
+        if (value < 0 || value > 10)
+        {
+            return false;
+        }
+        return apply(() -> MAX_MENTIONS_PER_MESSAGE.set(value));
+    }
+
+    public static boolean setMentionCooldownSeconds(final int value)
+    {
+        if (value < 0 || value > 3600)
+        {
+            return false;
+        }
+        return apply(() -> MENTION_COOLDOWN_SECONDS.set(value));
+    }
+
+    /**
+     * @return a one-line human summary of the mention settings, shared by the
+     *         in-game and Discord status commands
+     */
+    public static String mentionStatusText()
+    {
+        final StringBuilder text = new StringBuilder(160);
+        text.append("allowMentions: ").append(allowMentions);
+        if (suppressMentions)
+        {
+            text.append(" (overridden: suppressMentions is on, nothing will resolve)");
+        }
+        text.append('\n');
+        text.append("allowEveryoneMention: ").append(allowEveryoneMention).append('\n');
+        text.append("maxMentionsPerMessage: ").append(maxMentionsPerMessage).append('\n');
+        text.append("mentionCooldownSeconds: ").append(mentionCooldownSeconds);
+        return text.toString();
     }
 
     /**

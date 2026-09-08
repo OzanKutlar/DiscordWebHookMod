@@ -158,17 +158,20 @@ public final class ServerEventHandler
         event.setCanceled(true);
 
         final boolean op = DiscordWebhookSender.isOp(player);
+        // Resolved mentions are highlighted so the player sees the ping landed.
+        final Component body = Component.literal(": ").withStyle(ChatFormatting.WHITE)
+                .append(MentionResolver.decorate(text, ChatFormatting.WHITE));
         final Component line;
         if (op)
         {
             line = Component.literal("[ADMIN] ").withStyle(ChatFormatting.RED)
                     .append(Component.literal(player.getGameProfile().getName()).withStyle(ChatFormatting.RED))
-                    .append(Component.literal(": " + text).withStyle(ChatFormatting.WHITE));
+                    .append(body);
         }
         else
         {
             line = Component.literal(player.getGameProfile().getName()).withStyle(ChatFormatting.WHITE)
-                    .append(Component.literal(": " + text).withStyle(ChatFormatting.WHITE));
+                    .append(body);
         }
 
         final MinecraftServer server = player.getServer();

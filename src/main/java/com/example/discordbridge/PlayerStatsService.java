@@ -50,6 +50,8 @@ public final class PlayerStatsService
     private static final long CACHE_TTL_MS = 30_000L;
     /** Discord rejects embeds with more than 25 fields. */
     private static final int MAX_EMBED_FIELDS = 25;
+    /** Discord rejects field values longer than this. */
+    private static final int MAX_FIELD_VALUE_LENGTH = 1024;
     private static final int MAX_LEADERBOARD_ROWS = 15;
     private static final String KILLED_BY = "minecraft:killed_by";
 
@@ -277,12 +279,15 @@ public final class PlayerStatsService
     /* ------------------------------------------------------------------ */
 
     /**
-     * The overview: the leader in each headline category, plus live online status.
+     * The overview: the leader in every category anyone has scored on.
+     *
+     * <p>One embed field per group rather than per category, because 37 separate
+     * fields would blow straight past Discord's 25-field limit.</p>
      */
-    public static MessageEmbed buildLeaderboardsEmbed(final MinecraftServer server)
+    public static MessageEmbed buildOverviewEmbed(final MinecraftServer server)
     {
         final EmbedBuilder embed = new EmbedBuilder();
-        embed.setTitle("\uD83D\uDCCA Server Statistics");
+        embed.setTitle("\uD83D\uDCCA Server Statistics \u2014 Hall of Fame");
         embed.setColor(COLOUR_LEADERBOARD);
         embed.setTimestamp(Instant.now());
 
@@ -297,28 +302,26 @@ public final class PlayerStatsService
         final Set<String> active = activeCategoryIds(server);
         final List<ServerPlayer> onlinePlayers = server.getPlayerList().getPlayers();
 
-        if (allStats.isEmpty())
+        if (allStats.isEmpty() || active.isEmpty())
         {
             embed.setDescription("No player statistics recorded on this server yet.");
             return embed.build();
         }
 
+        // One field per group is reserved for the online summary at the end.
         int fields = 0;
-        for (final StatCategory category : StatCategories.overview())
+        for (final Map.Entry<StatCategory.StatGroup, List<StatCategory>> group : StatCategories.byGroup().entrySet())
         {
-            if (fields >= MAX_EMBED_FIELDS - 1 || !active.contains(category.id()))
+            if (fields >= MAX_EMBED_FIELDS - 1)
+            {
+                break;
+            }
+            final List<String> lines = groupLines(allStats.values(), active, group.getValue());
+            if (lines.isEmpty())
             {
                 continue;
             }
-            final PlayerStatsRecord leader = leaderOf(allStats.values(), category);
-            if (leader == null)
-            {
-                continue;
-            }
-            embed.addField(category.heading(),
-                    "**" + leader.name + "** \u2014 " + category.display(leader.value(category.id())),
-                    true);
-            fields++;
+            fields += addWrappedField(embed, group.getKey().heading(), lines, MAX_EMBED_FIELDS - 1 - fields);
         }
 
         if (fields == 0)
@@ -331,6 +334,67 @@ public final class PlayerStatsService
                 + server.getPlayerList().getMaxPlayers() + ")", onlineSummary(onlinePlayers), false);
         embed.setFooter("Use /stats category name:<category> for a full leaderboard, or /stats player name:<player>");
         return embed.build();
+    }
+
+    private static List<String> groupLines(final Iterable<PlayerStatsRecord> records, final Set<String> active,
+                                           final List<StatCategory> categories)
+    {
+        final List<String> lines = new ArrayList<>();
+        for (final StatCategory category : categories)
+        {
+            if (!active.contains(category.id()))
+            {
+                continue;
+            }
+            final PlayerStatsRecord leader = leaderOf(records, category);
+            if (leader == null)
+            {
+                continue;
+            }
+            lines.add(category.label() + " \u2014 **" + leader.name + "** ("
+                    + category.display(leader.value(category.id())) + ")");
+        }
+        return lines;
+    }
+
+    /**
+     * Adds one field, spilling into continuation fields rather than truncating
+     * when the lines exceed Discord's per-field character limit.
+     *
+     * @param budget the number of fields still available
+     * @return how many fields were actually added
+     */
+    private static int addWrappedField(final EmbedBuilder embed, final String heading,
+                                       final List<String> lines, final int budget)
+    {
+        if (budget <= 0 || lines.isEmpty())
+        {
+            return 0;
+        }
+        int used = 0;
+        StringBuilder buffer = new StringBuilder(MAX_FIELD_VALUE_LENGTH);
+
+        for (final String line : lines)
+        {
+            if (buffer.length() + line.length() + 1 > MAX_FIELD_VALUE_LENGTH)
+            {
+                if (used >= budget)
+                {
+                    return used;
+                }
+                embed.addField(used == 0 ? heading : heading + " (cont.)", buffer.toString(), false);
+                used++;
+                buffer = new StringBuilder(MAX_FIELD_VALUE_LENGTH);
+            }
+            buffer.append(line).append('\n');
+        }
+
+        if (buffer.length() > 0 && used < budget)
+        {
+            embed.addField(used == 0 ? heading : heading + " (cont.)", buffer.toString(), false);
+            used++;
+        }
+        return used;
     }
 
     /**

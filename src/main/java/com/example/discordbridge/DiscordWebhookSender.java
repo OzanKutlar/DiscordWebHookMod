@@ -144,7 +144,8 @@ public final class DiscordWebhookSender
         final boolean op = isOp(player);
         final String username = (op ? "[ADMIN] " : "") + player.getGameProfile().getName();
         final String avatarUrl = getPlayerAvatarUrl(player);
-        dispatch(rawContent, username, avatarUrl, null, null);
+        final MentionResolver.Result mentions = MentionResolver.resolveFor(player, rawContent);
+        dispatch(mentions.text(), username, avatarUrl, null, null, mentions);
     }
 
     /**
@@ -248,6 +249,13 @@ public final class DiscordWebhookSender
     private void dispatch(final String rawContent, final String username, final String avatarUrl,
                           final JsonObject embed, final Consumer<String> callback)
     {
+        dispatch(rawContent, username, avatarUrl, embed, callback, null);
+    }
+
+    private void dispatch(final String rawContent, final String username, final String avatarUrl,
+                          final JsonObject embed, final Consumer<String> callback,
+                          final MentionResolver.Result mentions)
+    {
         if ((rawContent == null || rawContent.isBlank()) && embed == null)
         {
             report(callback, "Nothing to send.");
@@ -281,7 +289,7 @@ public final class DiscordWebhookSender
         final String preparedContent = (rawContent != null && !rawContent.isBlank())
                 ? prepareContent(rawContent)
                 : null;
-        final String payload = buildPayload(preparedContent, username, avatarUrl, embed);
+        final String payload = buildPayload(preparedContent, username, avatarUrl, embed, mentions);
         try
         {
             worker.execute(() -> post(httpClient, url, payload, callback));
@@ -353,7 +361,8 @@ public final class DiscordWebhookSender
     }
 
     private static String buildPayload(final String content, final String username,
-                                       final String avatarUrl, final JsonObject embed)
+                                       final String avatarUrl, final JsonObject embed,
+                                       final MentionResolver.Result mentions)
     {
         final JsonObject json = new JsonObject();
         if (content != null && !content.isBlank())
@@ -385,13 +394,38 @@ public final class DiscordWebhookSender
             json.add("embeds", embeds);
         }
 
-        if (DiscordConfig.suppressMentions)
-        {
-            final JsonObject allowed = new JsonObject();
-            allowed.add("parse", new JsonArray());
-            json.add("allowed_mentions", allowed);
-        }
+        json.add("allowed_mentions", allowedMentions(mentions));
         return json.toString();
+    }
+
+    /**
+     * Builds an explicit whitelist so Discord itself refuses to render any ping
+     * we did not deliberately authorise.
+     *
+     * <p>This is always sent, even with no mentions, which means a player typing
+     * a raw {@code <@id>} into Minecraft chat can no longer produce a real ping.</p>
+     */
+    private static JsonObject allowedMentions(final MentionResolver.Result mentions)
+    {
+        final JsonObject allowed = new JsonObject();
+        final JsonArray parse = new JsonArray();
+
+        if (mentions != null && mentions.everyone() && !DiscordConfig.suppressMentions)
+        {
+            parse.add("everyone");
+        }
+        allowed.add("parse", parse);
+
+        if (mentions != null && !mentions.userIds().isEmpty() && !DiscordConfig.suppressMentions)
+        {
+            final JsonArray users = new JsonArray();
+            for (final String id : mentions.userIds())
+            {
+                users.add(id);
+            }
+            allowed.add("users", users);
+        }
+        return allowed;
     }
 
     /**

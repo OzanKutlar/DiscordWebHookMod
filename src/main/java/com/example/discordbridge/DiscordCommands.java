@@ -2,6 +2,7 @@ package com.example.discordbridge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -84,7 +85,93 @@ public final class DiscordCommands
                                         .executes(ctx -> toggle(ctx, "Custom webhook hosts",
                                                 () -> DiscordConfig.setAllowCustomWebhookHost(
                                                         BoolArgumentType.getBool(ctx, "value")))))))
+                .then(mentions())
                 .then(inbound());
+    }
+
+    /**
+     * Operator-side mirror of the Discord {@code /mentions} command.
+     */
+    private static LiteralArgumentBuilder<CommandSourceStack> mentions()
+    {
+        return Commands.literal("mentions")
+                .then(Commands.literal("status").executes(DiscordCommands::mentionStatus))
+                .then(Commands.literal("allow")
+                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                .executes(DiscordCommands::setAllowMentions)))
+                .then(Commands.literal("everyone")
+                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                .executes(ctx -> toggle(ctx, "@everyone from Minecraft",
+                                        () -> DiscordConfig.setAllowEveryoneMention(
+                                                BoolArgumentType.getBool(ctx, "value"))))))
+                .then(Commands.literal("max")
+                        .then(Commands.argument("value", IntegerArgumentType.integer(0, 10))
+                                .executes(ctx -> setInt(ctx, "Maximum mentions per message",
+                                        DiscordConfig.setMaxMentionsPerMessage(
+                                                IntegerArgumentType.getInteger(ctx, "value"))))))
+                .then(Commands.literal("cooldown")
+                        .then(Commands.argument("value", IntegerArgumentType.integer(0, 3600))
+                                .executes(ctx -> setInt(ctx, "Mention cooldown (seconds)",
+                                        DiscordConfig.setMentionCooldownSeconds(
+                                                IntegerArgumentType.getInteger(ctx, "value"))))));
+    }
+
+    private static int mentionStatus(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final String text = "Discord Bridge mentions\n  "
+                + DiscordConfig.mentionStatusText().replace("\n", "\n  ")
+                + "\n  known Discord names cached: " + MentionResolver.directorySize();
+        source.sendSuccess(() -> Component.literal(text).withStyle(ChatFormatting.GRAY), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Toggling mentions changes which gateway intents are requested, so the bot
+     * has to reconnect for the change to take effect.
+     */
+    private static int setAllowMentions(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final boolean value = BoolArgumentType.getBool(ctx, "value");
+
+        if (!DiscordConfig.setAllowMentions(value))
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        DiscordBridge.botManager().restart();
+
+        source.sendSuccess(() -> Component.literal("Mentions set to " + value + ". Reconnecting the bot...")
+                .withStyle(ChatFormatting.GREEN), false);
+        if (value)
+        {
+            source.sendSuccess(() -> Component.literal(
+                    "If the bot fails to connect, enable the Server Members Intent in the Discord "
+                            + "Developer Portal under Bot > Privileged Gateway Intents.")
+                    .withStyle(ChatFormatting.YELLOW), false);
+        }
+        if (value && DiscordConfig.suppressMentions)
+        {
+            source.sendSuccess(() -> Component.literal(
+                    "Note: suppressMentions is on, so nothing will actually resolve until you turn it off.")
+                    .withStyle(ChatFormatting.YELLOW), false);
+        }
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int setInt(final CommandContext<CommandSourceStack> ctx, final String label, final boolean ok)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        if (!ok)
+        {
+            source.sendFailure(Component.literal(WRITE_FAILED));
+            return 0;
+        }
+        final int value = IntegerArgumentType.getInteger(ctx, "value");
+        source.sendSuccess(() -> Component.literal(label + " set to " + value + ".")
+                .withStyle(ChatFormatting.GREEN), false);
+        return Command.SINGLE_SUCCESS;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> eventToggle(final String key)

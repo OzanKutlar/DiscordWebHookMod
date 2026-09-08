@@ -39,6 +39,7 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final String CMD_COMMAND = "cmd";
     private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
     private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
+    private static final String MENTIONS_COMMAND = "mentions";
     /** Discord will not accept more than 25 autocomplete suggestions. */
     private static final int MAX_AUTOCOMPLETE_CHOICES = 25;
 
@@ -53,12 +54,14 @@ public final class DiscordEventListener extends ListenerAdapter
     public void onReady(final ReadyEvent event)
     {
         LOGGER.info("Discord bot connected as {}", event.getJDA().getSelfUser().getAsTag());
+        MentionResolver.refresh(event.getJDA());
 
         // Register slash commands globally
         event.getJDA().updateCommands().addCommands(
                 Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft"),
                 Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel"),
                 statsCommandData(),
+                mentionsCommandData(),
                 Commands.slash(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime"),
                 Commands.slash(RESTART_COMMAND, "Gracefully restarts/stops the Minecraft server (Owner only)"),
                 Commands.slash(CMD_COMMAND, "Executes a Minecraft console command with OP level 4 (Owner only)")
@@ -85,6 +88,10 @@ public final class DiscordEventListener extends ListenerAdapter
                 channel.getGuild().upsertCommand(statsCommandData()).queue(
                         success -> LOGGER.info("Registered /stats slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /stats command: {}", error.getMessage())
+                );
+                channel.getGuild().upsertCommand(mentionsCommandData()).queue(
+                        success -> LOGGER.info("Registered /mentions slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /mentions command: {}", error.getMessage())
                 );
                 channel.getGuild().upsertCommand(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime").queue(
                         success -> LOGGER.info("Registered /status slash command in guild '{}' for instant use.", channel.getGuild().getName()),
@@ -116,6 +123,11 @@ public final class DiscordEventListener extends ListenerAdapter
         if (STATS_COMMAND.equals(event.getName()))
         {
             handleStatsCommand(event);
+            return;
+        }
+        if (MENTIONS_COMMAND.equals(event.getName()))
+        {
+            handleMentionsCommand(event);
             return;
         }
         if (STATUS_COMMAND.equals(event.getName()))
@@ -352,6 +364,135 @@ public final class DiscordEventListener extends ListenerAdapter
                 ));
     }
 
+    /* ------------------------------------------------------------------ */
+    /* Mention settings, restricted to the configured owner id.            */
+    /* ------------------------------------------------------------------ */
+
+    private static SlashCommandData mentionsCommandData()
+    {
+        return Commands.slash(MENTIONS_COMMAND, "Control Minecraft to Discord @mentions (Owner only)")
+                .addSubcommands(
+                        new SubcommandData("status", "Show the current mention settings"),
+                        new SubcommandData("allow", "Turn @name resolution on or off")
+                                .addOption(OptionType.BOOLEAN, "value", "Whether players may ping Discord users", true),
+                        new SubcommandData("everyone", "Allow @everyone and @here from Minecraft")
+                                .addOption(OptionType.BOOLEAN, "value", "Whether @everyone is permitted", true),
+                        new SubcommandData("max", "Maximum mentions resolved per message")
+                                .addOption(OptionType.INTEGER, "value", "Between 0 and 10", true),
+                        new SubcommandData("cooldown", "Seconds between one player's pings")
+                                .addOption(OptionType.INTEGER, "value", "Between 0 and 3600, 0 disables", true));
+    }
+
+    private void handleMentionsCommand(final SlashCommandInteractionEvent event)
+    {
+        if (!DiscordConfig.isOwner(event.getUser().getId()))
+        {
+            event.reply(":x: You are not authorized to change mention settings.").setEphemeral(true).queue();
+            return;
+        }
+
+        final String subcommand = event.getSubcommandName();
+        if (subcommand == null || "status".equals(subcommand))
+        {
+            event.reply("```\n" + DiscordConfig.mentionStatusText()
+                    + "\nknown Discord names cached: " + MentionResolver.directorySize() + "\n```").queue();
+            return;
+        }
+
+        final OptionMapping value = event.getOption("value");
+        if (value == null)
+        {
+            event.reply(":x: Missing value.").setEphemeral(true).queue();
+            return;
+        }
+
+        switch (subcommand)
+        {
+            case "allow":
+                handleAllowMentions(event, value.getAsBoolean());
+                return;
+            case "everyone":
+                reportToggle(event, DiscordConfig.setAllowEveryoneMention(value.getAsBoolean()),
+                        "@everyone from Minecraft", String.valueOf(value.getAsBoolean()));
+                return;
+            case "max":
+                reportToggle(event, DiscordConfig.setMaxMentionsPerMessage(value.getAsInt()),
+                        "Maximum mentions per message", String.valueOf(value.getAsInt()));
+                return;
+            case "cooldown":
+                reportToggle(event, DiscordConfig.setMentionCooldownSeconds(value.getAsInt()),
+                        "Mention cooldown (seconds)", String.valueOf(value.getAsInt()));
+                return;
+            default:
+                event.reply(":x: Unknown subcommand.").setEphemeral(true).queue();
+        }
+    }
+
+    /**
+     * Toggling mentions changes the requested gateway intents, so the bot must
+     * reconnect. The reply is sent before the restart because the restart tears
+     * down the JDA instance handling this interaction.
+     */
+    private void handleAllowMentions(final SlashCommandInteractionEvent event, final boolean enable)
+    {
+        if (!DiscordConfig.setAllowMentions(enable))
+        {
+            event.reply(":x: Could not write the config file. Check the server log.").setEphemeral(true).queue();
+            return;
+        }
+
+        final StringBuilder reply = new StringBuilder(256);
+        reply.append(":white_check_mark: Mentions set to **").append(enable).append("**. Reconnecting the bot...");
+        if (enable)
+        {
+            reply.append("\n:warning: If the bot does not come back, enable the **Server Members Intent** ")
+                    .append("in the Developer Portal under Bot > Privileged Gateway Intents.");
+        }
+        if (enable && DiscordConfig.suppressMentions)
+        {
+            reply.append("\n:information_source: `suppressMentions` is on, so nothing will resolve until you turn it off.");
+        }
+
+        event.reply(reply.toString()).queue(
+                hook -> DiscordBridge.botManager().restart(),
+                error -> DiscordBridge.botManager().restart());
+    }
+
+    private void reportToggle(final SlashCommandInteractionEvent event, final boolean ok,
+                              final String label, final String value)
+    {
+        if (!ok)
+        {
+            event.reply(":x: Could not apply that change. Check the value range and the server log.")
+                    .setEphemeral(true).queue();
+            return;
+        }
+        event.reply(":white_check_mark: " + label + " set to **" + value + "**.").queue();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Member cache upkeep for the mention directory.                      */
+    /* ------------------------------------------------------------------ */
+
+    @Override
+    public void onGuildMemberJoin(final net.dv8tion.jda.api.events.guild.member.GuildMemberJoinEvent event)
+    {
+        MentionResolver.refresh(event.getJDA());
+    }
+
+    @Override
+    public void onGuildMemberRemove(final net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent event)
+    {
+        MentionResolver.refresh(event.getJDA());
+    }
+
+    @Override
+    public void onGuildMemberUpdateNickname(
+            final net.dv8tion.jda.api.events.guild.member.update.GuildMemberUpdateNicknameEvent event)
+    {
+        MentionResolver.refresh(event.getJDA());
+    }
+
     /**
      * Discord forbids invoking a base command that declares subcommands, so the
      * summary lives under an explicit {@code overview} subcommand rather than a
@@ -434,7 +575,7 @@ public final class DiscordEventListener extends ListenerAdapter
             return;
         }
 
-        deferAndBuild(event, PlayerStatsService::buildLeaderboardsEmbed);
+        deferAndBuild(event, PlayerStatsService::buildOverviewEmbed);
     }
 
     /**
@@ -485,7 +626,7 @@ public final class DiscordEventListener extends ListenerAdapter
         final String targetPlayer = "player".equalsIgnoreCase(first) ? second : first;
         if (targetPlayer.isEmpty())
         {
-            sendStatsEmbed(event, mc, PlayerStatsService::buildLeaderboardsEmbed);
+            sendStatsEmbed(event, mc, PlayerStatsService::buildOverviewEmbed);
             return;
         }
         sendStatsEmbed(event, mc, server2 -> PlayerStatsService.buildPlayerStatsEmbed(server2, targetPlayer));

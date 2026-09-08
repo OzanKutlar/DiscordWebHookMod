@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -165,26 +166,31 @@ public final class ServerInfoCommands
         final Set<String> active = PlayerStatsService.activeCategoryIds(server);
 
         final ChatTableBuilder table = new ChatTableBuilder()
-                .header("Category", "Leader", "Value")
+                .header("Group", "Category", "Leader", "Value")
                 .emptyMessage("No player statistics recorded on this server yet.");
 
-        for (final StatCategory category : StatCategories.overview())
+        for (final Map.Entry<StatCategory.StatGroup, List<StatCategory>> group
+                : StatCategories.byGroup().entrySet())
         {
-            if (!active.contains(category.id()))
+            for (final StatCategory category : group.getValue())
             {
-                continue;
+                if (!active.contains(category.id()))
+                {
+                    continue;
+                }
+                final List<PlayerStatsService.PlayerStatsRecord> top =
+                        PlayerStatsService.topFor(server, category, 1);
+                if (top.isEmpty())
+                {
+                    continue;
+                }
+                final PlayerStatsService.PlayerStatsRecord leader = top.get(0);
+                table.row(group.getKey().label(), category.label(), leader.name,
+                        category.display(leader.value(category.id())));
             }
-            final List<PlayerStatsService.PlayerStatsRecord> top =
-                    PlayerStatsService.topFor(server, category, 1);
-            if (top.isEmpty())
-            {
-                continue;
-            }
-            final PlayerStatsService.PlayerStatsRecord leader = top.get(0);
-            table.row(category.label(), leader.name, category.display(leader.value(category.id())));
         }
 
-        final Component title = Component.literal("Server leaderboards")
+        final Component title = Component.literal("Server leaderboards \u2014 every category")
                 .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
         final Component hint = Component.literal("/stats category <name> for a full leaderboard")
                 .withStyle(ChatFormatting.DARK_GRAY);

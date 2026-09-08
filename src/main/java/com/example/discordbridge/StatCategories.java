@@ -2,6 +2,7 @@ package com.example.discordbridge;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -14,6 +15,12 @@ import static com.example.discordbridge.StatCategory.StatFormat.COUNT;
 import static com.example.discordbridge.StatCategory.StatFormat.HALF_HEARTS;
 import static com.example.discordbridge.StatCategory.StatFormat.RATIO;
 import static com.example.discordbridge.StatCategory.StatFormat.TICKS;
+import static com.example.discordbridge.StatCategory.StatGroup.BLOCKS;
+import static com.example.discordbridge.StatCategory.StatGroup.COMBAT;
+import static com.example.discordbridge.StatCategory.StatGroup.INTERACTIONS;
+import static com.example.discordbridge.StatCategory.StatGroup.MOVEMENT;
+import static com.example.discordbridge.StatCategory.StatGroup.OTHER;
+import static com.example.discordbridge.StatCategory.StatGroup.TIME;
 import static com.example.discordbridge.StatCategory.entry;
 import static com.example.discordbridge.StatCategory.sectionTotal;
 import static com.example.discordbridge.StatCategory.sumKeys;
@@ -34,6 +41,7 @@ public final class StatCategories
 
     private static final List<StatCategory> ALL_CATEGORIES = buildAll();
     private static final Map<String, StatCategory> LOOKUP = buildLookup(ALL_CATEGORIES);
+    private static final Map<StatCategory.StatGroup, List<StatCategory>> GROUPED = buildGrouped(ALL_CATEGORIES);
 
     private StatCategories()
     {
@@ -45,6 +53,14 @@ public final class StatCategories
     public static List<StatCategory> all()
     {
         return ALL_CATEGORIES;
+    }
+
+    /**
+     * @return every category bucketed by group, in display order. Immutable.
+     */
+    public static Map<StatCategory.StatGroup, List<StatCategory>> byGroup()
+    {
+        return GROUPED;
     }
 
     /**
@@ -61,22 +77,6 @@ public final class StatCategories
         return Optional.ofNullable(LOOKUP.get(query.trim().toLowerCase(Locale.ROOT)));
     }
 
-    /**
-     * @return the id of every category flagged for the default overview
-     */
-    public static List<StatCategory> overview()
-    {
-        final List<StatCategory> out = new ArrayList<>();
-        for (final StatCategory category : ALL_CATEGORIES)
-        {
-            if (category.inOverview())
-            {
-                out.add(category);
-            }
-        }
-        return out;
-    }
-
     private static Map<String, StatCategory> buildLookup(final List<StatCategory> categories)
     {
         final Map<String, StatCategory> map = new LinkedHashMap<>();
@@ -91,24 +91,43 @@ public final class StatCategories
         return Collections.unmodifiableMap(map);
     }
 
-    private static StatCategory of(final String id, final Set<String> aliases, final String label,
-                                   final String emoji, final StatCategory.StatSource source,
-                                   final StatCategory.StatFormat format, final boolean inOverview)
+    private static Map<StatCategory.StatGroup, List<StatCategory>> buildGrouped(final List<StatCategory> categories)
     {
-        return new StatCategory(id, aliases, label, emoji, source, null, format, inOverview);
+        final Map<StatCategory.StatGroup, List<StatCategory>> map = new EnumMap<>(StatCategory.StatGroup.class);
+        for (final StatCategory.StatGroup group : StatCategory.StatGroup.values())
+        {
+            map.put(group, new ArrayList<>());
+        }
+        for (final StatCategory category : categories)
+        {
+            map.get(category.group()).add(category);
+        }
+        for (final StatCategory.StatGroup group : StatCategory.StatGroup.values())
+        {
+            map.put(group, Collections.unmodifiableList(map.get(group)));
+        }
+        return Collections.unmodifiableMap(map);
+    }
+
+    private static StatCategory of(final String id, final Set<String> aliases, final String label,
+                                   final String emoji, final StatCategory.StatGroup group,
+                                   final StatCategory.StatSource source, final StatCategory.StatFormat format)
+    {
+        return new StatCategory(id, aliases, label, emoji, group, source, null, format);
     }
 
     private static StatCategory derived(final String id, final Set<String> aliases, final String label,
-                                        final String emoji, final StatCategory.DerivedStat derived,
+                                        final String emoji, final StatCategory.StatGroup group,
+                                        final StatCategory.DerivedStat derived,
                                         final StatCategory.StatFormat format)
     {
-        return new StatCategory(id, aliases, label, emoji, null, derived, format, false);
+        return new StatCategory(id, aliases, label, emoji, group, null, derived, format);
     }
 
     private static StatCategory external(final String id, final Set<String> aliases, final String label,
-                                         final String emoji, final boolean inOverview)
+                                         final String emoji, final StatCategory.StatGroup group)
     {
-        return new StatCategory(id, aliases, label, emoji, null, null, COUNT, inOverview);
+        return new StatCategory(id, aliases, label, emoji, group, null, null, COUNT);
     }
 
     private static List<StatCategory> buildAll()
@@ -118,96 +137,96 @@ public final class StatCategories
         /* ---------------- Combat ---------------- */
 
         list.add(of("deaths", Set.of("death", "died", "dies"), "Deaths", "\uD83D\uDC80",
-                entry(CUSTOM, "minecraft:deaths"), COUNT, true));
+                COMBAT, entry(CUSTOM, "minecraft:deaths"), COUNT));
         list.add(of("mob_kills", Set.of("kills", "mobs", "mobkills"), "Mobs Killed", "\u2694\uFE0F",
-                entry(CUSTOM, "minecraft:mob_kills"), COUNT, true));
+                COMBAT, entry(CUSTOM, "minecraft:mob_kills"), COUNT));
         list.add(of("player_kills", Set.of("pvp", "playerkills"), "Player Kills", "\uD83D\uDDE1\uFE0F",
-                entry(CUSTOM, "minecraft:player_kills"), COUNT, false));
+                COMBAT, entry(CUSTOM, "minecraft:player_kills"), COUNT));
         list.add(of("damage_taken", Set.of("damagetaken", "hurt", "punchingbag"), "Damage Taken", "\uD83E\uDD15",
-                entry(CUSTOM, "minecraft:damage_taken"), HALF_HEARTS, true));
+                COMBAT, entry(CUSTOM, "minecraft:damage_taken"), HALF_HEARTS));
         list.add(of("damage_dealt", Set.of("damagedealt", "damage"), "Damage Dealt", "\uD83D\uDCA5",
-                entry(CUSTOM, "minecraft:damage_dealt"), HALF_HEARTS, false));
+                COMBAT, entry(CUSTOM, "minecraft:damage_dealt"), HALF_HEARTS));
         list.add(of("damage_blocked", Set.of("blocked", "shield", "turtle"), "Damage Blocked", "\uD83D\uDEE1\uFE0F",
-                entry(CUSTOM, "minecraft:damage_blocked_by_shield"), HALF_HEARTS, false));
+                COMBAT, entry(CUSTOM, "minecraft:damage_blocked_by_shield"), HALF_HEARTS));
 
         /* ---------------- Blocks and items ---------------- */
 
         list.add(of("blocks_mined", Set.of("mined", "mining", "blocks"), "Blocks Mined", "\u26CF\uFE0F",
-                sectionTotal("minecraft:mined"), COUNT, true));
+                BLOCKS, sectionTotal("minecraft:mined"), COUNT));
         list.add(of("items_crafted", Set.of("crafted", "crafting"), "Items Crafted", "\uD83D\uDD28",
-                sectionTotal("minecraft:crafted"), COUNT, false));
+                BLOCKS, sectionTotal("minecraft:crafted"), COUNT));
         list.add(of("items_used", Set.of("used", "usage"), "Items Used", "\uD83D\uDCE6",
-                sectionTotal("minecraft:used"), COUNT, false));
+                BLOCKS, sectionTotal("minecraft:used"), COUNT));
         list.add(of("tools_broken", Set.of("broken", "butterfingers"), "Tools Broken", "\uD83D\uDD27",
-                sectionTotal("minecraft:broken"), COUNT, false));
+                BLOCKS, sectionTotal("minecraft:broken"), COUNT));
         list.add(of("items_enchanted", Set.of("enchanted", "enchants"), "Items Enchanted", "\u2728",
-                entry(CUSTOM, "minecraft:enchant_item"), COUNT, false));
+                BLOCKS, entry(CUSTOM, "minecraft:enchant_item"), COUNT));
 
         /* ---------------- Time ---------------- */
 
         list.add(of("play_time", Set.of("playtime", "time", "played"), "Time Played", "\u23F1\uFE0F",
-                entry(CUSTOM, "minecraft:play_time"), TICKS, true));
+                TIME, entry(CUSTOM, "minecraft:play_time"), TICKS));
         list.add(of("time_since_death", Set.of("survival", "streak", "sincedeath"), "Survival Streak", "\uD83C\uDF40",
-                entry(CUSTOM, "minecraft:time_since_death"), TICKS, false));
+                TIME, entry(CUSTOM, "minecraft:time_since_death"), TICKS));
         list.add(of("time_since_rest", Set.of("awake", "phantom", "sincerest"), "Time Since Sleep", "\uD83D\uDC7B",
-                entry(CUSTOM, "minecraft:time_since_rest"), TICKS, false));
+                TIME, entry(CUSTOM, "minecraft:time_since_rest"), TICKS));
         list.add(of("sneak_time", Set.of("sneak", "crouch", "sneaky"), "Time Sneaking", "\uD83E\uDD77",
-                entry(CUSTOM, "minecraft:sneak_time"), TICKS, false));
+                TIME, entry(CUSTOM, "minecraft:sneak_time"), TICKS));
 
         /* ---------------- Movement ---------------- */
 
         list.add(of("blocks_walked", Set.of("walked", "walk", "distance"), "Distance Walked", "\uD83C\uDFC3",
-                sumKeys(CUSTOM, "minecraft:walk_one_cm", "minecraft:sprint_one_cm", "minecraft:crouch_one_cm"),
-                CENTIMETRES, true));
+                MOVEMENT, sumKeys(CUSTOM, "minecraft:walk_one_cm", "minecraft:sprint_one_cm", "minecraft:crouch_one_cm"),
+                CENTIMETRES));
         list.add(of("fall_distance", Set.of("fall", "fell", "falls", "gravity"), "Distance Fallen", "\uD83E\uDE82",
-                entry(CUSTOM, "minecraft:fall_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:fall_one_cm"), CENTIMETRES));
         list.add(of("swim_distance", Set.of("swim", "swam"), "Distance Swum", "\uD83C\uDFCA",
-                sumKeys(CUSTOM, "minecraft:swim_one_cm", "minecraft:walk_under_water_one_cm"),
-                CENTIMETRES, false));
+                MOVEMENT, sumKeys(CUSTOM, "minecraft:swim_one_cm", "minecraft:walk_under_water_one_cm"),
+                CENTIMETRES));
         list.add(of("climb_distance", Set.of("climb", "climbed", "ladder"), "Distance Climbed", "\uD83E\uDDD7",
-                entry(CUSTOM, "minecraft:climb_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:climb_one_cm"), CENTIMETRES));
         list.add(of("elytra_distance", Set.of("elytra", "fly", "flown", "aviate"), "Distance Flown", "\uD83E\uDD85",
-                entry(CUSTOM, "minecraft:aviate_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:aviate_one_cm"), CENTIMETRES));
         list.add(of("boat_distance", Set.of("boat", "sailed"), "Distance by Boat", "\uD83D\uDEA3",
-                entry(CUSTOM, "minecraft:boat_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:boat_one_cm"), CENTIMETRES));
         list.add(of("horse_distance", Set.of("horse", "ridden"), "Distance by Horse", "\uD83D\uDC0E",
-                entry(CUSTOM, "minecraft:horse_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:horse_one_cm"), CENTIMETRES));
         list.add(of("pig_distance", Set.of("pig", "pigriding"), "Distance by Pig", "\uD83D\uDC16",
-                entry(CUSTOM, "minecraft:pig_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:pig_one_cm"), CENTIMETRES));
         list.add(of("minecart_distance", Set.of("minecart", "cart", "rails"), "Distance by Minecart", "\uD83D\uDE83",
-                entry(CUSTOM, "minecraft:minecart_one_cm"), CENTIMETRES, false));
+                MOVEMENT, entry(CUSTOM, "minecraft:minecart_one_cm"), CENTIMETRES));
 
         /* ---------------- Interactions ---------------- */
 
         list.add(of("jumps", Set.of("jump", "jumped", "bunny"), "Times Jumped", "\uD83D\uDC07",
-                entry(CUSTOM, "minecraft:jump"), COUNT, true));
+                INTERACTIONS, entry(CUSTOM, "minecraft:jump"), COUNT));
         list.add(of("leave_game", Set.of("quits", "ragequit", "leaves", "logouts"), "Times Left the Game", "\uD83D\uDEAA",
-                entry(CUSTOM, "minecraft:leave_game"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:leave_game"), COUNT));
         list.add(of("chests_opened", Set.of("chests", "chest", "loot"), "Chests Opened", "\uD83E\uDDF3",
-                entry(CUSTOM, "minecraft:open_chest"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:open_chest"), COUNT));
         list.add(of("bells_rung", Set.of("bells", "bell"), "Bells Rung", "\uD83D\uDD14",
-                entry(CUSTOM, "minecraft:bell_ring"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:bell_ring"), COUNT));
         list.add(of("flowers_potted", Set.of("flowers", "pots", "decorator"), "Flowers Potted", "\uD83C\uDF38",
-                entry(CUSTOM, "minecraft:pot_flower"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:pot_flower"), COUNT));
         list.add(of("cake_slices", Set.of("cake", "cakes"), "Cake Slices Eaten", "\uD83C\uDF70",
-                entry(CUSTOM, "minecraft:eat_cake_slice"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:eat_cake_slice"), COUNT));
         list.add(of("fish_caught", Set.of("fish", "fishing", "fished"), "Fish Caught", "\uD83C\uDFA3",
-                entry(CUSTOM, "minecraft:fish_caught"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:fish_caught"), COUNT));
         list.add(of("villager_trades", Set.of("trades", "trading", "villagers"), "Villager Trades", "\uD83D\uDC9A",
-                entry(CUSTOM, "minecraft:traded_with_villager"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:traded_with_villager"), COUNT));
         list.add(of("animals_bred", Set.of("bred", "breeding", "animals"), "Animals Bred", "\uD83D\uDC2E",
-                entry(CUSTOM, "minecraft:animals_bred"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:animals_bred"), COUNT));
         list.add(of("raids_won", Set.of("raids", "raid"), "Raids Won", "\uD83C\uDFF4",
-                entry(CUSTOM, "minecraft:raid_win"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:raid_win"), COUNT));
         list.add(of("nights_slept", Set.of("slept", "sleep", "beds"), "Nights Slept", "\uD83D\uDECF\uFE0F",
-                entry(CUSTOM, "minecraft:sleep_in_bed"), COUNT, false));
+                INTERACTIONS, entry(CUSTOM, "minecraft:sleep_in_bed"), COUNT));
 
         /* ---------------- External and derived ---------------- */
 
         list.add(external("advancements", Set.of("achievements", "advancement", "achievement"),
-                "Advancements", "\uD83C\uDFC6", true));
+                "Advancements", "\uD83C\uDFC6", OTHER));
         list.add(derived("deaths_per_hour", Set.of("dph", "clumsy", "deathrate"), "Deaths per Hour", "\uD83D\uDCC9",
-                StatCategories::deathsPerHour, RATIO));
+                OTHER, StatCategories::deathsPerHour, RATIO));
 
         return Collections.unmodifiableList(list);
     }

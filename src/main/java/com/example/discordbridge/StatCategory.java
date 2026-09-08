@@ -11,11 +11,11 @@ import java.util.Set;
 /**
  * One leaderboard-able statistic.
  *
- * <p>A category knows three things: how to pull its number out of a player's
- * stats JSON, how to render that number, and what to call itself. Everything
- * else in the stats system is driven off this, so adding a new statistic is a
- * single entry in {@link StatCategories} rather than a change spread across the
- * loader, the embeds and the commands.</p>
+ * <p>A category knows four things: which group it belongs to, how to pull its
+ * number out of a player's stats JSON, how to render that number, and what to
+ * call itself. Everything else in the stats system is driven off this, so
+ * adding a new statistic is a single entry in {@link StatCategories} rather
+ * than a change spread across the loader, the embeds and the commands.</p>
  *
  * <p>Exactly one of {@code source} or {@code derived} is normally set:</p>
  * <ul>
@@ -31,10 +31,10 @@ public record StatCategory(String id,
                            Set<String> aliases,
                            String label,
                            String emoji,
+                           StatCategory.StatGroup group,
                            StatCategory.StatSource source,
                            StatCategory.DerivedStat derived,
-                           StatCategory.StatFormat format,
-                           boolean inOverview)
+                           StatCategory.StatFormat format)
 {
     public StatCategory
     {
@@ -45,6 +45,10 @@ public record StatCategory(String id,
         if (format == null)
         {
             throw new IllegalArgumentException("A stat category needs a format: " + id);
+        }
+        if (group == null)
+        {
+            throw new IllegalArgumentException("A stat category needs a group: " + id);
         }
         aliases = aliases == null ? Set.of() : Set.copyOf(aliases);
         label = (label == null || label.isBlank()) ? id : label;
@@ -89,6 +93,43 @@ public record StatCategory(String id,
     public String display(final long value)
     {
         return format.apply(value);
+    }
+
+    /**
+     * Display sections for the overview. Declaration order is display order.
+     */
+    public enum StatGroup
+    {
+        COMBAT("Combat", "\u2694\uFE0F"),
+        BLOCKS("Blocks & Items", "\u26CF\uFE0F"),
+        TIME("Time", "\u23F1\uFE0F"),
+        MOVEMENT("Movement", "\uD83C\uDFC3"),
+        INTERACTIONS("Interactions", "\uD83E\uDDF3"),
+        OTHER("Other", "\uD83C\uDFC6");
+
+        private final String label;
+        private final String emoji;
+
+        StatGroup(final String label, final String emoji)
+        {
+            this.label = label;
+            this.emoji = emoji;
+        }
+
+        public String label()
+        {
+            return label;
+        }
+
+        public String emoji()
+        {
+            return emoji;
+        }
+
+        public String heading()
+        {
+            return emoji + " " + label;
+        }
     }
 
     @FunctionalInterface
