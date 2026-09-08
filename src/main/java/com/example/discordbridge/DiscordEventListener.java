@@ -7,13 +7,22 @@ import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
+import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
+import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Handles incoming Discord gateway events (messages and slash commands).
@@ -30,6 +39,8 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final String CMD_COMMAND = "cmd";
     private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
     private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
+    /** Discord will not accept more than 25 autocomplete suggestions. */
+    private static final int MAX_AUTOCOMPLETE_CHOICES = 25;
 
     private final MinecraftServer server;
 
@@ -47,8 +58,7 @@ public final class DiscordEventListener extends ListenerAdapter
         event.getJDA().updateCommands().addCommands(
                 Commands.slash(PLAYERS_COMMAND, "Shows the list of players currently online in Minecraft"),
                 Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel"),
-                Commands.slash(STATS_COMMAND, "Shows server player statistics and leaderboards")
-                        .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false),
+                statsCommandData(),
                 Commands.slash(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime"),
                 Commands.slash(RESTART_COMMAND, "Gracefully restarts/stops the Minecraft server (Owner only)"),
                 Commands.slash(CMD_COMMAND, "Executes a Minecraft console command with OP level 4 (Owner only)")
@@ -72,10 +82,7 @@ public final class DiscordEventListener extends ListenerAdapter
                         success -> LOGGER.info("Registered /clearchat slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /clearchat command: {}", error.getMessage())
                 );
-                channel.getGuild().upsertCommand(
-                        Commands.slash(STATS_COMMAND, "Shows server player statistics and leaderboards")
-                                .addOption(OptionType.STRING, "player", "Optional player name to view specific stats", false)
-                ).queue(
+                channel.getGuild().upsertCommand(statsCommandData()).queue(
                         success -> LOGGER.info("Registered /stats slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /stats command: {}", error.getMessage())
                 );
@@ -345,6 +352,52 @@ public final class DiscordEventListener extends ListenerAdapter
                 ));
     }
 
+    /**
+     * Discord forbids invoking a base command that declares subcommands, so the
+     * summary lives under an explicit {@code overview} subcommand rather than a
+     * bare {@code /stats}.
+     */
+    private static SlashCommandData statsCommandData()
+    {
+        return Commands.slash(STATS_COMMAND, "Server statistics, leaderboards and player cards")
+                .addSubcommands(
+                        new SubcommandData("overview", "Top players across the headline statistics"),
+                        new SubcommandData("player", "Lifetime statistics for one player")
+                                .addOption(OptionType.STRING, "name", "The player to look up", true, false),
+                        new SubcommandData("category", "Full leaderboard for one statistic")
+                                .addOption(OptionType.STRING, "name", "The statistic to rank players by", true, true));
+    }
+
+    /**
+     * Suggests category ids. Runs on a gateway thread, so it deliberately reads
+     * only the cached snapshot and never touches the world save.
+     */
+    @Override
+    public void onCommandAutoCompleteInteraction(final CommandAutoCompleteInteractionEvent event)
+    {
+        if (!STATS_COMMAND.equals(event.getName())
+                || !"category".equals(event.getSubcommandName())
+                || !"name".equals(event.getFocusedOption().getName()))
+        {
+            return;
+        }
+
+        final String typed = event.getFocusedOption().getValue().trim().toLowerCase(Locale.ROOT);
+        final List<Command.Choice> choices = new ArrayList<>();
+        for (final String id : PlayerStatsService.suggestibleCategoryIds())
+        {
+            if (choices.size() >= MAX_AUTOCOMPLETE_CHOICES)
+            {
+                break;
+            }
+            if (typed.isEmpty() || id.contains(typed))
+            {
+                choices.add(new Command.Choice(id, id));
+            }
+        }
+        event.replyChoices(choices).queue();
+    }
+
     private void handleStatsCommand(final SlashCommandInteractionEvent event)
     {
         if (!DiscordConfig.respondToStatsCommand)
@@ -353,9 +406,43 @@ public final class DiscordEventListener extends ListenerAdapter
             return;
         }
 
-        final OptionMapping playerOption = event.getOption("player");
-        final String targetPlayer = playerOption != null ? playerOption.getAsString().trim() : null;
+        final String subcommand = event.getSubcommandName();
+        final OptionMapping nameOption = event.getOption("name");
+        final String argument = nameOption != null ? nameOption.getAsString().trim() : null;
 
+        if ("category".equals(subcommand))
+        {
+            final Optional<StatCategory> resolved = StatCategories.resolve(argument);
+            if (resolved.isEmpty())
+            {
+                event.reply(":x: Unknown statistic `" + argument + "`. Start typing to see the available ones.")
+                        .setEphemeral(true).queue();
+                return;
+            }
+            deferAndBuild(event, mc -> PlayerStatsService.buildCategoryLeaderboardEmbed(mc, resolved.get()));
+            return;
+        }
+
+        if ("player".equals(subcommand))
+        {
+            if (argument == null || argument.isEmpty())
+            {
+                event.reply(":x: Please give a player name.").setEphemeral(true).queue();
+                return;
+            }
+            deferAndBuild(event, mc -> PlayerStatsService.buildPlayerStatsEmbed(mc, argument));
+            return;
+        }
+
+        deferAndBuild(event, PlayerStatsService::buildLeaderboardsEmbed);
+    }
+
+    /**
+     * Defers the interaction, flushes stats on the server thread, then replies.
+     */
+    private void deferAndBuild(final SlashCommandInteractionEvent event,
+                               final java.util.function.Function<MinecraftServer, MessageEmbed> builder)
+    {
         event.deferReply().queue(hook -> {
             final MinecraftServer mc = server;
             if (mc == null)
@@ -364,21 +451,8 @@ public final class DiscordEventListener extends ListenerAdapter
                 return;
             }
             mc.execute(() -> {
-                // Flush online player stats for fresh calculations
-                for (final ServerPlayer p : mc.getPlayerList().getPlayers())
-                {
-                    try
-                    {
-                        p.getStats().save();
-                    }
-                    catch (final Exception ignored)
-                    {
-                    }
-                }
-                final MessageEmbed embed = (targetPlayer == null || targetPlayer.isEmpty())
-                        ? PlayerStatsService.buildLeaderboardsEmbed(mc)
-                        : PlayerStatsService.buildPlayerStatsEmbed(mc, targetPlayer);
-                hook.sendMessageEmbeds(embed).queue();
+                flushOnlineStats(mc);
+                hook.sendMessageEmbeds(builder.apply(mc)).queue();
             });
         });
     }
@@ -390,25 +464,61 @@ public final class DiscordEventListener extends ListenerAdapter
         {
             return;
         }
-        final String[] parts = raw.split("\\s+", 2);
-        final String targetPlayer = parts.length > 1 ? parts[1].trim() : null;
 
-        mc.execute(() -> {
-            for (final ServerPlayer p : mc.getPlayerList().getPlayers())
+        final String[] parts = raw.split("\\s+", 3);
+        final String first = parts.length > 1 ? parts[1].trim() : "";
+        final String second = parts.length > 2 ? parts[2].trim() : "";
+
+        if ("category".equalsIgnoreCase(first))
+        {
+            final Optional<StatCategory> resolved = StatCategories.resolve(second);
+            if (resolved.isEmpty())
             {
-                try
-                {
-                    p.getStats().save();
-                }
-                catch (final Exception ignored)
-                {
-                }
+                event.getMessage().reply(":x: Unknown statistic `" + second + "`.").queue();
+                return;
             }
-            final MessageEmbed embed = (targetPlayer == null || targetPlayer.isEmpty())
-                    ? PlayerStatsService.buildLeaderboardsEmbed(mc)
-                    : PlayerStatsService.buildPlayerStatsEmbed(mc, targetPlayer);
-            event.getChannel().sendMessageEmbeds(embed).queue();
+            sendStatsEmbed(event, mc, server2 -> PlayerStatsService.buildCategoryLeaderboardEmbed(server2, resolved.get()));
+            return;
+        }
+
+        // "!stats player <name>" and the legacy "!stats <name>" both look up a player.
+        final String targetPlayer = "player".equalsIgnoreCase(first) ? second : first;
+        if (targetPlayer.isEmpty())
+        {
+            sendStatsEmbed(event, mc, PlayerStatsService::buildLeaderboardsEmbed);
+            return;
+        }
+        sendStatsEmbed(event, mc, server2 -> PlayerStatsService.buildPlayerStatsEmbed(server2, targetPlayer));
+    }
+
+    private void sendStatsEmbed(final MessageReceivedEvent event, final MinecraftServer mc,
+                                final java.util.function.Function<MinecraftServer, MessageEmbed> builder)
+    {
+        mc.execute(() -> {
+            flushOnlineStats(mc);
+            event.getChannel().sendMessageEmbeds(builder.apply(mc)).queue();
         });
+    }
+
+    /**
+     * Writes online players' stats to disk and drops the cached snapshot, so the
+     * numbers we report are current. Must run on the server thread.
+     */
+    private static void flushOnlineStats(final MinecraftServer mc)
+    {
+        for (final ServerPlayer player : mc.getPlayerList().getPlayers())
+        {
+            try
+            {
+                player.getStats().save();
+            }
+            catch (final Exception e)
+            {
+                LOGGER.debug("Could not flush stats for {}: {}",
+                        player.getGameProfile().getName(), e.getMessage());
+            }
+        }
+        PlayerStatsService.invalidate();
     }
 
     private void handleStatusCommand(final SlashCommandInteractionEvent event)

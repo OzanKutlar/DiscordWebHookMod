@@ -50,8 +50,9 @@ other players or relayed to Discord.
 | --- | --- |
 | `/players` | Table of everyone online with health, experience level and ping |
 | `/status` | Table of TPS, tick time, RAM and uptime |
-| `/stats` | Leaderboard table: kills, blocks mined, play time, distance, advancements |
-| `/stats <player>` | Table of one player's lifetime statistics |
+| `/stats` | Leaderboard table: the leader in each headline statistic |
+| `/stats player <name>` | Table of one player's lifetime statistics |
+| `/stats category <name>` | Full ranked leaderboard for one statistic |
 
 Output is drawn with box characters. Minecraft's default font is not monospaced, so
 columns are padded by character count and will line up closely rather than exactly.
@@ -87,14 +88,44 @@ powered by JDA (Java Discord API). It connects via Discord's **WebSocket Gateway
 The bot registers official Discord slash commands directly to your guild for instant availability:
 
 - **`/players`** (or `!players` text): Rich embed listing everyone online with their current health and experience level, plus the online count in the footer.
-- **`/stats`** (or `!stats` text): Shows server leaderboards (Most Mobs Killed, Most Blocks Mined, Most Time Played, Most Blocks Walked, Most Achievements) and live Current Health and EXP of online players.
-- **`/stats player:<name>`** (or `!stats <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
+- **`/stats overview`** (or `!stats` text): Shows the leader in each headline statistic, plus live Current Health and EXP of online players.
+- **`/stats player name:<name>`** (or `!stats player <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
+- **`/stats category name:<category>`** (or `!stats category <category>` text): Full ranked leaderboard for one statistic. The `name` option autocompletes.
 - **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).
 - **`/status`** (or `!status` text): Shows server performance, TPS, RAM usage, and uptime.
 - **`/restart`** (or `!restart` text): Gracefully restarts/stops the Minecraft server (strictly restricted to owner Discord ID `462616453653331968`).
 - **`/cmd <command>`** (or `!cmd <command>` text): Executes any console command with Operator level 4 (`OP`) permissions and returns the output to Discord (strictly restricted to owner Discord ID `462616453653331968`).
 
 Turn commands off with `respondToPlayersCommand = false` or `respondToStatsCommand = false` in the config.
+
+> [!NOTE]
+> Discord does not allow a bare `/stats` once a command declares subcommands, which is why the summary is `/stats overview` there but plain `/stats` in game.
+
+### Stat categories
+
+Every statistic is read straight out of the vanilla `stats/<uuid>.json` files, so
+nothing extra is tracked or stored. **Categories that every player scores zero on
+are hidden** from the overview, from in-game tab completion and from Discord
+autocomplete, and reappear on their own the moment somebody scores.
+
+Each category can be named by its id or any of its aliases, so `/stats category
+death`, `deaths` and `died` are the same query.
+
+| Group | Category ids |
+| --- | --- |
+| Combat | `deaths`, `mob_kills`, `player_kills`, `damage_taken`, `damage_dealt`, `damage_blocked` |
+| Blocks & items | `blocks_mined`, `items_crafted`, `items_used`, `tools_broken`, `items_enchanted` |
+| Time | `play_time`, `time_since_death`, `time_since_rest`, `sneak_time` |
+| Movement | `blocks_walked`, `fall_distance`, `swim_distance`, `climb_distance`, `elytra_distance`, `boat_distance`, `horse_distance`, `pig_distance`, `minecart_distance` |
+| Interactions | `jumps`, `leave_game`, `chests_opened`, `bells_rung`, `flowers_potted`, `cake_slices`, `fish_caught`, `villager_trades`, `animals_bred`, `raids_won`, `nights_slept` |
+| Other | `advancements`, `deaths_per_hour` |
+
+Player cards also show a **Nemesis** line: whatever has killed that player most
+often, read from `minecraft:killed_by`.
+
+To add a statistic, add one entry to `StatCategories.buildAll()`. The loader, the
+overview, both `/stats category` implementations and the autocomplete all pick it
+up with no further changes.
 
 ### How the echo loop is prevented
 

@@ -18,19 +18,17 @@ import net.minecraftforge.fml.common.Mod;
 import java.lang.management.ManagementFactory;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.function.Function;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * In-game mirrors of the read-only Discord information commands.
  *
  * <p>Output is rendered as a box-drawn table and sent to the caller only, never
- * broadcast. All three commands are available at permission level 0.</p>
+ * broadcast. All commands are available at permission level 0.</p>
  *
  * <p>{@code /restart} and {@code /cmd} are deliberately not mirrored: vanilla
  * already provides {@code /stop}, and an in-game console-execution command
@@ -42,11 +40,18 @@ public final class ServerInfoCommands
     private static final long BYTES_PER_MB = 1024L * 1024L;
     private static final double MIN_TICK_MS = 50.0;
     private static final double MAX_TPS = 20.0;
+    private static final int MAX_LEADERBOARD_ROWS = 15;
 
     private static final SuggestionProvider<CommandSourceStack> ONLINE_PLAYERS =
             (ctx, builder) -> SharedSuggestionProvider.suggest(
                     ctx.getSource().getServer().getPlayerList().getPlayers().stream()
                             .map(player -> player.getGameProfile().getName()),
+                    builder);
+
+    /** Only offers categories somebody has actually scored on. */
+    private static final SuggestionProvider<CommandSourceStack> STAT_CATEGORIES =
+            (ctx, builder) -> SharedSuggestionProvider.suggest(
+                    PlayerStatsService.activeCategoryIds(ctx.getSource().getServer()),
                     builder);
 
     private ServerInfoCommands()
@@ -63,10 +68,15 @@ public final class ServerInfoCommands
                 .executes(ServerInfoCommands::status));
 
         event.getDispatcher().register(Commands.literal("stats")
-                .executes(ServerInfoCommands::leaderboards)
-                .then(Commands.argument("player", StringArgumentType.word())
-                        .suggests(ONLINE_PLAYERS)
-                        .executes(ServerInfoCommands::playerStats)));
+                .executes(ServerInfoCommands::overview)
+                .then(Commands.literal("player")
+                        .then(Commands.argument("name", StringArgumentType.word())
+                                .suggests(ONLINE_PLAYERS)
+                                .executes(ServerInfoCommands::playerStats)))
+                .then(Commands.literal("category")
+                        .then(Commands.argument("name", StringArgumentType.word())
+                                .suggests(STAT_CATEGORIES)
+                                .executes(ServerInfoCommands::categoryStats))));
     }
 
     /* ------------------------------------------------------------------ */
@@ -146,36 +156,74 @@ public final class ServerInfoCommands
     /* /stats                                                              */
     /* ------------------------------------------------------------------ */
 
-    private static int leaderboards(final CommandContext<CommandSourceStack> ctx)
+    private static int overview(final CommandContext<CommandSourceStack> ctx)
     {
         final CommandSourceStack source = ctx.getSource();
-        final NumberFormat fmt = NumberFormat.getNumberInstance(Locale.US);
+        final MinecraftServer server = source.getServer();
+        flushOnlineStats(server);
 
-        final Map<UUID, PlayerStatsService.PlayerStatsRecord> all =
-                PlayerStatsService.collectAllStats(source.getServer());
-        final Collection<PlayerStatsService.PlayerStatsRecord> records = all.values();
+        final Set<String> active = PlayerStatsService.activeCategoryIds(server);
 
         final ChatTableBuilder table = new ChatTableBuilder()
                 .header("Category", "Leader", "Value")
                 .emptyMessage("No player statistics recorded on this server yet.");
 
-        addLeader(table, records, "Mobs killed",
-                Comparator.comparingLong(r -> r.mobKills),
-                r -> fmt.format(r.mobKills));
-        addLeader(table, records, "Blocks mined",
-                Comparator.comparingLong(r -> r.blocksMined),
-                r -> fmt.format(r.blocksMined));
-        addLeader(table, records, "Time played",
-                Comparator.comparingLong(r -> r.playTimeTicks),
-                r -> PlayerStatsService.formatPlayTime(r.playTimeTicks));
-        addLeader(table, records, "Blocks walked",
-                Comparator.comparingLong(r -> r.blocksWalked),
-                r -> fmt.format(r.blocksWalked));
-        addLeader(table, records, "Achievements",
-                Comparator.comparingInt(r -> r.achievements),
-                r -> Integer.toString(r.achievements));
+        for (final StatCategory category : StatCategories.overview())
+        {
+            if (!active.contains(category.id()))
+            {
+                continue;
+            }
+            final List<PlayerStatsService.PlayerStatsRecord> top =
+                    PlayerStatsService.topFor(server, category, 1);
+            if (top.isEmpty())
+            {
+                continue;
+            }
+            final PlayerStatsService.PlayerStatsRecord leader = top.get(0);
+            table.row(category.label(), leader.name, category.display(leader.value(category.id())));
+        }
 
         final Component title = Component.literal("Server leaderboards")
+                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        final Component hint = Component.literal("/stats category <name> for a full leaderboard")
+                .withStyle(ChatFormatting.DARK_GRAY);
+
+        reply(source, title, Component.empty().append(table.build()).append("\n").append(hint));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int categoryStats(final CommandContext<CommandSourceStack> ctx)
+    {
+        final CommandSourceStack source = ctx.getSource();
+        final MinecraftServer server = source.getServer();
+        final String requested = StringArgumentType.getString(ctx, "name").trim();
+
+        final Optional<StatCategory> resolved = StatCategories.resolve(requested);
+        if (resolved.isEmpty())
+        {
+            source.sendFailure(Component.literal("Unknown statistic \"" + requested
+                    + "\". Press tab after /stats category to see the available ones."));
+            return 0;
+        }
+
+        final StatCategory category = resolved.get();
+        flushOnlineStats(server);
+
+        final List<PlayerStatsService.PlayerStatsRecord> top =
+                PlayerStatsService.topFor(server, category, MAX_LEADERBOARD_ROWS);
+
+        final ChatTableBuilder table = new ChatTableBuilder()
+                .header("#", "Player", "Value")
+                .emptyMessage("Nobody has recorded anything for \"" + category.id() + "\" yet.");
+
+        for (int i = 0; i < top.size(); i++)
+        {
+            final PlayerStatsService.PlayerStatsRecord record = top.get(i);
+            table.row(Integer.toString(i + 1), record.name, category.display(record.value(category.id())));
+        }
+
+        final Component title = Component.literal(category.label() + " \u2014 leaderboard")
                 .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
 
         reply(source, title, table.build());
@@ -185,8 +233,9 @@ public final class ServerInfoCommands
     private static int playerStats(final CommandContext<CommandSourceStack> ctx)
     {
         final CommandSourceStack source = ctx.getSource();
-        final String requested = StringArgumentType.getString(ctx, "player").trim();
+        final String requested = StringArgumentType.getString(ctx, "name").trim();
         final MinecraftServer server = source.getServer();
+        flushOnlineStats(server);
 
         final PlayerStatsService.PlayerStatsRecord record =
                 PlayerStatsService.collectStatsFor(server, requested);
@@ -212,11 +261,19 @@ public final class ServerInfoCommands
                     + " (" + fmt.format(online.totalExperience) + " XP)");
         }
 
-        table.row("Time played", PlayerStatsService.formatPlayTime(record.playTimeTicks));
-        table.row("Mobs killed", fmt.format(record.mobKills));
-        table.row("Blocks mined", fmt.format(record.blocksMined));
-        table.row("Blocks walked", fmt.format(record.blocksWalked));
-        table.row("Achievements", Integer.toString(record.achievements));
+        if (record.nemesis != null && !record.nemesis.isBlank())
+        {
+            table.row("Nemesis", record.nemesis);
+        }
+
+        for (final StatCategory category : StatCategories.all())
+        {
+            final long value = record.value(category.id());
+            if (value != 0L)
+            {
+                table.row(category.label(), category.display(value));
+            }
+        }
 
         final Component title = Component.literal("Statistics \u2014 " + record.name)
                 .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
@@ -229,18 +286,28 @@ public final class ServerInfoCommands
     /* Helpers                                                             */
     /* ------------------------------------------------------------------ */
 
-    private static void addLeader(final ChatTableBuilder table,
-                                  final Collection<PlayerStatsService.PlayerStatsRecord> records,
-                                  final String label,
-                                  final Comparator<PlayerStatsService.PlayerStatsRecord> order,
-                                  final Function<PlayerStatsService.PlayerStatsRecord, String> value)
+    /**
+     * Flushes online players' stats to disk so the numbers we read are current,
+     * then drops the cached snapshot.
+     */
+    private static void flushOnlineStats(final MinecraftServer server)
     {
-        final PlayerStatsService.PlayerStatsRecord leader = records.stream().max(order).orElse(null);
-        if (leader == null || leader.name == null || leader.name.isBlank())
+        if (server == null)
         {
             return;
         }
-        table.row(label, leader.name, value.apply(leader));
+        for (final ServerPlayer player : server.getPlayerList().getPlayers())
+        {
+            try
+            {
+                player.getStats().save();
+            }
+            catch (final Exception e)
+            {
+                // A single failed flush just means slightly stale numbers.
+            }
+        }
+        PlayerStatsService.invalidate();
     }
 
     /**

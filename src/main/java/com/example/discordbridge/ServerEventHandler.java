@@ -97,6 +97,10 @@ public final class ServerEventHandler
     @SubscribeEvent
     public static void onPlayerLeave(final PlayerEvent.PlayerLoggedOutEvent event)
     {
+        // Vanilla writes the player's stats on logout, so the cached snapshot is
+        // now stale regardless of whether we relay the leave message.
+        PlayerStatsService.invalidate();
+
         if (!DiscordConfig.announceLeave)
         {
             return;
