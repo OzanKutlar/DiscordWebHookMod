@@ -555,6 +555,161 @@ public final class PlayerStatsService
     }
 
     /* ------------------------------------------------------------------ */
+    /* Plain-text export for the /overview LLM prompt.                     */
+    /* ------------------------------------------------------------------ */
+
+    private static final int TEXT_LEADERBOARD_ROWS = 5;
+
+    /**
+     * Writes online players' stats to disk and drops the cached snapshot, so the
+     * numbers read next are current. Must run on the server thread.
+     */
+    public static void flushOnlineStats(final MinecraftServer server)
+    {
+        if (server == null)
+        {
+            return;
+        }
+        for (final ServerPlayer player : server.getPlayerList().getPlayers())
+        {
+            try
+            {
+                player.getStats().save();
+            }
+            catch (final Exception e)
+            {
+                LOGGER.debug("Could not flush stats for {}: {}",
+                        player.getGameProfile().getName(), e.getMessage());
+            }
+        }
+        invalidate();
+    }
+
+    /**
+     * The whole statistics picture as plain text, with no Discord markdown or emoji:
+     * every category leader, the top few per category, and one card per player.
+     *
+     * <p>Reads the world save, so call it on the server thread like the embed builders.</p>
+     */
+    public static String buildStatsText(final MinecraftServer server)
+    {
+        if (server == null)
+        {
+            return "(statistics unavailable: the server is not running)";
+        }
+        final Map<UUID, PlayerStatsRecord> all = collectAllStats(server);
+        final Set<String> active = activeCategoryIds(server);
+        if (all.isEmpty() || active.isEmpty())
+        {
+            return "(no player statistics were recorded on this server)";
+        }
+
+        final StringBuilder out = new StringBuilder(4096);
+        out.append("Generated: ").append(Instant.now()).append('\n');
+        out.append("Survival Streak and Time Since Sleep are the values at that moment; everything else is a lifetime total.\n\n");
+        appendLeaders(out, all.values(), active);
+        appendLeaderboards(out, server, active);
+        appendPlayerCards(out, all.values());
+        return out.toString();
+    }
+
+    private static void appendLeaders(final StringBuilder out, final Iterable<PlayerStatsRecord> records,
+                                      final Set<String> active)
+    {
+        out.append("-- Leader in every category anyone scored on --\n");
+        for (final Map.Entry<StatCategory.StatGroup, List<StatCategory>> group : StatCategories.byGroup().entrySet())
+        {
+            final List<String> lines = new ArrayList<>();
+            for (final StatCategory category : group.getValue())
+            {
+                if (!active.contains(category.id()))
+                {
+                    continue;
+                }
+                final PlayerStatsRecord leader = leaderOf(records, category);
+                if (leader != null)
+                {
+                    lines.add("  " + category.label() + ": " + leader.name
+                            + " (" + category.display(leader.value(category.id())) + ")");
+                }
+            }
+            if (lines.isEmpty())
+            {
+                continue;
+            }
+            out.append('[').append(group.getKey().label()).append("]\n");
+            for (final String line : lines)
+            {
+                out.append(line).append('\n');
+            }
+        }
+    }
+
+    private static void appendLeaderboards(final StringBuilder out, final MinecraftServer server,
+                                           final Set<String> active)
+    {
+        out.append("\n-- Top ").append(TEXT_LEADERBOARD_ROWS).append(" in every category --\n");
+        for (final StatCategory category : StatCategories.all())
+        {
+            if (!active.contains(category.id()))
+            {
+                continue;
+            }
+            final List<PlayerStatsRecord> top = topFor(server, category, TEXT_LEADERBOARD_ROWS);
+            if (top.isEmpty())
+            {
+                continue;
+            }
+            out.append("  ").append(category.label()).append(": ");
+            for (int i = 0; i < top.size(); i++)
+            {
+                final PlayerStatsRecord record = top.get(i);
+                if (i > 0)
+                {
+                    out.append(", ");
+                }
+                out.append(i + 1).append(". ").append(record.name)
+                        .append(" (").append(category.display(record.value(category.id()))).append(')');
+            }
+            out.append('\n');
+        }
+    }
+
+    private static void appendPlayerCards(final StringBuilder out, final Iterable<PlayerStatsRecord> records)
+    {
+        final List<PlayerStatsRecord> sorted = new ArrayList<>();
+        for (final PlayerStatsRecord record : records)
+        {
+            if (record.name != null && !record.name.isBlank())
+            {
+                sorted.add(record);
+            }
+        }
+        sorted.sort(Comparator.comparing((PlayerStatsRecord r) -> r.name, String.CASE_INSENSITIVE_ORDER));
+
+        out.append("\n-- Player cards (every non-zero statistic) --\n");
+        for (final PlayerStatsRecord record : sorted)
+        {
+            final List<String> cells = new ArrayList<>();
+            for (final StatCategory category : StatCategories.all())
+            {
+                final long value = record.value(category.id());
+                if (value != 0L)
+                {
+                    cells.add(category.label() + " " + category.display(value));
+                }
+            }
+            if (record.nemesis != null && !record.nemesis.isBlank())
+            {
+                cells.add("Nemesis " + record.nemesis);
+            }
+            out.append(record.name).append(": ")
+                    .append(cells.isEmpty() ? "(nothing recorded)" : String.join(" | ", cells))
+                    .append('\n');
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
     /* Formatting helpers, shared with the in-game tables.                 */
     /* ------------------------------------------------------------------ */
 

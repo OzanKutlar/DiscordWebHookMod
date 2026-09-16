@@ -302,18 +302,7 @@ public final class ServerInfoCommands
         {
             return;
         }
-        for (final ServerPlayer player : server.getPlayerList().getPlayers())
-        {
-            try
-            {
-                player.getStats().save();
-            }
-            catch (final Exception e)
-            {
-                // A single failed flush just means slightly stale numbers.
-            }
-        }
-        PlayerStatsService.invalidate();
+        PlayerStatsService.flushOnlineStats(server);
     }
 
     /**

@@ -40,6 +40,7 @@ public final class DiscordEventListener extends ListenerAdapter
     private static final String BTN_CONFIRM_PREFIX = "clearchat:confirm:";
     private static final String BTN_CANCEL_PREFIX = "clearchat:cancel:";
     private static final String MENTIONS_COMMAND = "mentions";
+    private static final String OVERVIEW_COMMAND = "overview";
     /** Discord will not accept more than 25 autocomplete suggestions. */
     private static final int MAX_AUTOCOMPLETE_CHOICES = 25;
 
@@ -62,12 +63,13 @@ public final class DiscordEventListener extends ListenerAdapter
                 Commands.slash(CLEAR_CHAT_COMMAND, "Removes the past 100 messages from this channel"),
                 statsCommandData(),
                 mentionsCommandData(),
+                overviewCommandData(),
                 Commands.slash(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime"),
                 Commands.slash(RESTART_COMMAND, "Gracefully restarts/stops the Minecraft server (Owner only)"),
                 Commands.slash(CMD_COMMAND, "Executes a Minecraft console command with OP level 4 (Owner only)")
                         .addOption(OptionType.STRING, "command", "The command to execute (e.g. op, time set day)", true)
         ).queue(
-                success -> LOGGER.info("Registered global slash commands (/players, /clearchat, /stats, /status, /restart, /cmd)."),
+                success -> LOGGER.info("Registered global slash commands (/players, /clearchat, /stats, /mentions, /overview, /status, /restart, /cmd)."),
                 error -> LOGGER.warn("Could not register global slash commands: {}", error.getMessage())
         );
 
@@ -92,6 +94,10 @@ public final class DiscordEventListener extends ListenerAdapter
                 channel.getGuild().upsertCommand(mentionsCommandData()).queue(
                         success -> LOGGER.info("Registered /mentions slash command in guild '{}' for instant use.", channel.getGuild().getName()),
                         error -> LOGGER.debug("Could not register guild-specific /mentions command: {}", error.getMessage())
+                );
+                channel.getGuild().upsertCommand(overviewCommandData()).queue(
+                        success -> LOGGER.info("Registered /overview slash command in guild '{}' for instant use.", channel.getGuild().getName()),
+                        error -> LOGGER.debug("Could not register guild-specific /overview command: {}", error.getMessage())
                 );
                 channel.getGuild().upsertCommand(STATUS_COMMAND, "Displays server performance, TPS, RAM, and uptime").queue(
                         success -> LOGGER.info("Registered /status slash command in guild '{}' for instant use.", channel.getGuild().getName()),
@@ -128,6 +134,11 @@ public final class DiscordEventListener extends ListenerAdapter
         if (MENTIONS_COMMAND.equals(event.getName()))
         {
             handleMentionsCommand(event);
+            return;
+        }
+        if (OVERVIEW_COMMAND.equals(event.getName()))
+        {
+            handleOverviewCommand(event);
             return;
         }
         if (STATUS_COMMAND.equals(event.getName()))
@@ -211,6 +222,11 @@ public final class DiscordEventListener extends ListenerAdapter
             {
                 respondToTextStats(event, raw);
             }
+            return;
+        }
+        if ("!overview".equalsIgnoreCase(raw))
+        {
+            respondToTextOverview(event);
             return;
         }
         if ("!status".equalsIgnoreCase(raw))
@@ -647,19 +663,86 @@ public final class DiscordEventListener extends ListenerAdapter
      */
     private static void flushOnlineStats(final MinecraftServer mc)
     {
-        for (final ServerPlayer player : mc.getPlayerList().getPlayers())
+        PlayerStatsService.flushOnlineStats(mc);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* End-of-season overview.                                             */
+    /* ------------------------------------------------------------------ */
+
+    private static SlashCommandData overviewCommandData()
+    {
+        return Commands.slash(OVERVIEW_COMMAND,
+                "Build an LLM prompt recapping the whole server history (sent to your DMs)");
+    }
+
+    /**
+     * Validates the request, then hands off to {@link OverviewService}. The reply
+     * is deferred ephemerally so progress and any fallback file stay private.
+     */
+    private void handleOverviewCommand(final SlashCommandInteractionEvent event)
+    {
+        if (!DiscordConfig.respondToOverviewCommand)
         {
-            try
-            {
-                player.getStats().save();
-            }
-            catch (final Exception e)
-            {
-                LOGGER.debug("Could not flush stats for {}: {}",
-                        player.getGameProfile().getName(), e.getMessage());
-            }
+            event.reply("The /overview command is currently disabled.").setEphemeral(true).queue();
+            return;
         }
-        PlayerStatsService.invalidate();
+        final GuildMessageChannel channel = OverviewService.bridgeChannel(event.getJDA());
+        if (channel == null)
+        {
+            event.reply(":x: The bridge channel is not configured, or I can't see it.").setEphemeral(true).queue();
+            return;
+        }
+        if (!OverviewService.isAuthorized(event.getMember(), channel, event.getUser().getId()))
+        {
+            event.reply(":x: You need the 'Manage Messages' permission in the bridge channel to build an overview.")
+                    .setEphemeral(true).queue();
+            return;
+        }
+        final String refusal = OverviewService.tryAcquire(event.getUser().getId());
+        if (refusal != null)
+        {
+            event.reply(":hourglass: " + refusal).setEphemeral(true).queue();
+            return;
+        }
+        event.deferReply(true).queue(
+                hook -> OverviewService.run(server, channel, event.getUser(), OverviewService.hookReporter(hook)),
+                error -> {
+                    OverviewService.release(false);
+                    LOGGER.warn("Could not acknowledge /overview: {}", error.getMessage());
+                });
+    }
+
+    private void respondToTextOverview(final MessageReceivedEvent event)
+    {
+        if (!DiscordConfig.respondToOverviewCommand)
+        {
+            event.getMessage().reply("The overview command is currently disabled.").queue();
+            return;
+        }
+        final GuildMessageChannel channel = OverviewService.bridgeChannel(event.getJDA());
+        if (channel == null)
+        {
+            event.getMessage().reply(":x: The bridge channel is not configured, or I can't see it.").queue();
+            return;
+        }
+        if (!OverviewService.isAuthorized(event.getMember(), channel, event.getAuthor().getId()))
+        {
+            event.getMessage().reply(":x: You need the 'Manage Messages' permission to build an overview.").queue();
+            return;
+        }
+        final String refusal = OverviewService.tryAcquire(event.getAuthor().getId());
+        if (refusal != null)
+        {
+            event.getMessage().reply(":hourglass: " + refusal).queue();
+            return;
+        }
+        event.getMessage().reply(":scroll: Building the server overview. I'll DM it to you when it's ready.").queue(
+                status -> OverviewService.run(server, channel, event.getAuthor(), OverviewService.messageReporter(status)),
+                error -> {
+                    OverviewService.release(false);
+                    LOGGER.warn("Could not start !overview: {}", error.getMessage());
+                });
     }
 
     private void handleStatusCommand(final SlashCommandInteractionEvent event)

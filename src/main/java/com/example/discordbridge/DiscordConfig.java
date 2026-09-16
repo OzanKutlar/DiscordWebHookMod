@@ -146,6 +146,19 @@ public final class DiscordConfig
             .comment("Discord user ID allowed to run /restart and /cmd operator console commands.")
             .define("ownerDiscordId", "462616453653331968");
 
+    private static final ForgeConfigSpec.BooleanValue RESPOND_TO_OVERVIEW_COMMAND = BUILDER
+            .comment("Answer '/overview' by DMing an LLM recap prompt built from the whole channel history.",
+                     "Only the owner and members with Manage Messages can run it.")
+            .define("respondToOverviewCommand", true);
+
+    private static final ForgeConfigSpec.IntValue MAX_OVERVIEW_MESSAGES = BUILDER
+            .comment("Most messages /overview reads, newest first. Older messages past this are left out.")
+            .defineInRange("maxOverviewMessages", 50000, 100, 200000);
+
+    private static final ForgeConfigSpec.IntValue OVERVIEW_COOLDOWN_SECONDS = BUILDER
+            .comment("Minimum seconds between successful /overview runs. The owner is exempt.")
+            .defineInRange("overviewCooldownSeconds", 600, 0, 86400);
+
     static
     {
         BUILDER.pop();
@@ -209,6 +222,9 @@ public final class DiscordConfig
     public static boolean respondToPlayersCommand = true;
     public static boolean respondToStatsCommand = true;
     public static String ownerDiscordId = "462616453653331968";
+    public static boolean respondToOverviewCommand = true;
+    public static int maxOverviewMessages = 50000;
+    public static int overviewCooldownSeconds = 600;
     public static boolean allowMentions = false;
     public static boolean allowEveryoneMention = false;
     public static int maxMentionsPerMessage = 3;
@@ -260,6 +276,9 @@ public final class DiscordConfig
         {
             ownerDiscordId = "462616453653331968";
         }
+        respondToOverviewCommand = RESPOND_TO_OVERVIEW_COMMAND.get();
+        maxOverviewMessages = MAX_OVERVIEW_MESSAGES.get();
+        overviewCooldownSeconds = OVERVIEW_COOLDOWN_SECONDS.get();
         allowMentions = ALLOW_MENTIONS.get();
         allowEveryoneMention = ALLOW_EVERYONE_MENTION.get();
         maxMentionsPerMessage = MAX_MENTIONS_PER_MESSAGE.get();

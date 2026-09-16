@@ -97,6 +97,7 @@ The bot registers official Discord slash commands directly to your guild for ins
 - **`/stats player name:<name>`** (or `!stats player <name>` text): Shows detailed statistics card for a specific player (including head skin thumbnail).
 - **`/stats category name:<category>`** (or `!stats category <category>` text): Full ranked leaderboard for one statistic. The `name` option autocompletes.
 - **`/clearchat`** (or `!clearchat` text): Clears the last 100 messages with interactive confirmation buttons (requires Manage Messages permission).
+- **`/overview`** (or `!overview` text): Reads the bridge channel's full history plus the final `/stats` data, and DMs you a ready-made LLM prompt for an end-of-season recap. Owner or **Manage Messages** only. See [End-of-season overview](#end-of-season-overview).
 - **`/status`** (or `!status` text): Shows server performance, TPS, RAM usage, and uptime.
 - **`/restart`** (or `!restart` text): Gracefully restarts/stops the Minecraft server (strictly restricted to owner Discord ID `462616453653331968`).
 - **`/cmd <command>`** (or `!cmd <command>` text): Executes any console command with Operator level 4 (`OP`) permissions and returns the output to Discord (strictly restricted to owner Discord ID `462616453653331968`).
@@ -148,6 +149,52 @@ itself forever. `relayBotMessages` exists to override this, and should stay `fal
 - Rate limits (`429`) are honoured via `retry_after`; other errors back off up to 60 seconds.
 - Relayed messages are capped at `maxRelayedLength` (default 256), stripped of section-sign
   formatting codes, and flattened to a single line. Messages starting with `/` are dropped.
+
+## End-of-season overview
+
+`/overview` turns the whole bridge channel into a prompt you can hand to any LLM
+(ChatGPT, Claude, Gemini, ...). The LLM then writes a recap of the server: the
+story arc, the funniest moments, the best sequences, running jokes and a
+tongue-in-cheek award for every player.
+
+1. Run `/overview` in Discord. It replies privately with progress, then DMs you a `.txt` file.
+2. Upload the file to your LLM, or open it and paste the text.
+3. Post the recap back to the channel. The LLM is told to split it into chunks under 1,900 characters for this.
+
+The prompt contains three things:
+
+- the LLM instructions
+- a plain-text export of every statistic: the leader in each category, the top 5
+  per category, and one card per player with their nemesis
+- a compact log with one line per message
+
+In the log, in-game chat, Discord chat, joins, deaths, advancements and
+commands each get their own marker. The bot's own command replies are left out,
+and repeated lines are collapsed.
+
+If your DMs are closed, the file is attached to the private slash command reply
+instead. `!overview` has no private reply, so it asks you to open your DMs. Very
+large logs are split into numbered parts under 8 MB each, and the LLM is told to
+wait for the part marked `FINAL`. The summary includes a rough token count, so you
+can check that your model can take it in one go.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `respondToOverviewCommand` | `true` | Turns the command on or off |
+| `maxOverviewMessages` | `50000` | Most messages read, newest first. Older messages past this are left out |
+| `overviewCooldownSeconds` | `600` | Gap between successful runs. The owner is exempt, and only one overview builds at a time |
+
+> [!CAUTION]
+> The prompt contains everything anyone said in the channel, and the requester
+> will paste it into a third-party service. That is why the command is limited to
+> the owner and members with **Manage Messages**. Consider telling the group first.
+
+> [!NOTE]
+> - Only the configured bridge channel is read.
+> - Messages removed with `/clearchat` or deleted by hand are gone for good.
+> - Discord returns 100 messages per request, so a channel with tens of thousands
+>   of messages takes a few minutes to read.
+> - The bot needs **Read Message History**, which the setup steps already grant.
 
 ## Minecraft to Discord mentions
 
